@@ -4,6 +4,7 @@ import math
 import sys
 import contextlib
 import io
+import shutil
 from pathlib import Path
 
 import astropy.units as u
@@ -26,19 +27,10 @@ def apply_project_style() -> None:
             import plot_style  # noqa: F401
     except Exception:
         pass
-    # GUI rendering and PDF export must remain robust on machines without TeX.
-    plt.rcParams.update(
-        {
-            "text.usetex": False,
-            "font.family": "serif",
-            "font.size": 12,
-            "axes.labelsize": 12,
-            "axes.titlesize": 12,
-            "xtick.labelsize": 10,
-            "ytick.labelsize": 10,
-            "savefig.dpi": 300,
-        }
-    )
+    # plot_style.py enables LaTeX. Keep it when available, but do not let a
+    # missing TeX install crash the interactive Qt canvas or PDF export.
+    if shutil.which("latex") is None:
+        plt.rcParams["text.usetex"] = False
 
 
 apply_project_style()
@@ -105,6 +97,7 @@ def slit_polygon_pixels(image: ImageData, target: Target, settings: ChartSetting
 
 def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) -> None:
     data = image_with_injected_psf(image, target, settings)
+    ny, nx = data.shape[:2]
     if data.ndim == 3:
         ax.imshow(np.clip(data, 0, 1), origin="lower")
     else:
@@ -116,6 +109,9 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
             vmin, vmax = 0.0, 1.0
         norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=AsinhStretch())
         ax.imshow(data, origin="lower", cmap="gray", norm=norm)
+    ax.set_xlim(-0.5, nx - 0.5)
+    ax.set_ylim(-0.5, ny - 0.5)
+    ax.set_aspect("equal", adjustable="box")
     ax.coords.grid(color="white", alpha=0.18, linestyle=":", linewidth=0.7)
     ax.coords[0].set_axislabel("RA")
     ax.coords[1].set_axislabel("Dec")
@@ -146,16 +142,22 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
         )
     if settings.show_compass:
         draw_compass(ax, image)
-    draw_scale_ruler(ax, image, 2.0)
+    draw_scale_ruler(ax, image, 60.0)
     draw_catalog_sources(ax, image, target, settings)
-    subtitle = f"{image.survey} {image.band} | RA {target.ra_deg:.6f} Dec {target.dec_deg:.6f}"
-    ax.set_title(subtitle, fontsize=10)
+    ax.set_title(chart_title(image, target), fontsize=plt.rcParams.get("axes.titlesize", 12))
+
+
+def chart_title(image: ImageData, target: Target) -> str:
+    coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+    ra_text = coord.ra.to_string(unit=u.hour, sep=":", precision=2, pad=True)
+    dec_text = coord.dec.to_string(unit=u.deg, sep=":", precision=1, alwayssign=True, pad=True)
+    return f"{image.survey} {image.band} image | {target.label} | RA {ra_text}  Dec {dec_text}"
 
 
 def draw_sn_marker(ax, image: ImageData, x: float, y: float, label: str) -> None:
     scale = pixel_scale_arcsec(image)
     inner = max(3.0, 1.0 / scale)
-    outer = max(inner + 8.0, 5.0 / scale)
+    outer = max(inner + 6.0, 3.5 / scale)
     color = "#ff3b30"
     kwargs = {"color": color, "lw": 1.8, "solid_capstyle": "butt"}
     ax.plot([x - outer, x - inner], [y, y], **kwargs)
@@ -176,10 +178,10 @@ def draw_sn_marker(ax, image: ImageData, x: float, y: float, label: str) -> None
 
 def draw_compass(ax, image: ImageData) -> None:
     ny, nx = image.data.shape[:2]
-    base_x = 0.82 * nx
-    base_y = 0.14 * ny
+    base_x = 0.86 * nx
+    base_y = 0.08 * ny
     center = image.wcs.pixel_to_world(base_x, base_y)
-    length_arcsec = max(8.0, min(nx, ny) * pixel_scale_arcsec(image) * 0.10)
+    length_arcsec = max(8.0, min(nx, ny) * pixel_scale_arcsec(image) * 0.085)
     north = center.spherical_offsets_by(0 * u.arcsec, length_arcsec * u.arcsec)
     east = center.spherical_offsets_by(length_arcsec * u.arcsec, 0 * u.arcsec)
     north_x, north_y = image.wcs.world_to_pixel(north)
@@ -206,7 +208,7 @@ def draw_scale_ruler(ax, image: ImageData, length_arcsec: float) -> None:
     ax.text(
         center_x,
         center_y + 2.5 * tick,
-        f'{length_arcsec:.0f}"',
+        "1 arcmin" if abs(length_arcsec - 60.0) < 1e-6 else f'{length_arcsec:.0f}"',
         color="white",
         fontsize=9,
         weight="bold",

@@ -12,10 +12,10 @@ PySide6 desktop app for building finding charts for core-collapse supernovae.
 - Inject the SN as a visual Moffat PSF at the WCS target position.
 - Draw a crosshair and target label.
 - Draw a north/east compass.
-- Draw a 2 arcsec ruler.
+- Draw a 1 arcmin ruler.
 - Draw a configurable slit.
 - Query Gaia DR3 catalog sources and overlay them on the finding chart.
-- Default slit width is 1 arcsec and default slit length is 10 arcsec.
+- Default slit width is 2 arcsec and default slit length is 10 arcsec.
 - Compute parallactic angle from target, observatory, and date/time.
 - Export finding charts as PNG, JPG, or PDF.
 

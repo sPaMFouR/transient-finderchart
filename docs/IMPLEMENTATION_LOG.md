@@ -81,8 +81,16 @@
     - Replaced the injected Gaussian with a visual Moffat PSF.
     - Changed the SN marker to separated horizontal and vertical line segments around the PSF center.
     - Moved the north/east compass to the bottom-right of the chart.
-    - Added a 2 arcsec ruler near the bottom-center of the chart.
+    - Added a scale ruler near the bottom-center of the chart.
     - Verified a live Gaia DR3 query around `SN 2023ixf` returned sources.
+
+13. Updated finding-chart presentation defaults.
+    - Default slit size is now 2 arcsec x 10 arcsec.
+    - Scale ruler is now 1 arcmin instead of 2 arcsec.
+    - Compass was moved further toward the bottom-right corner.
+    - WCSAxes limits are explicitly fixed to image pixel edges for better RA/Dec alignment with the rectangular cutout.
+    - Chart title now includes survey image name, target name, and sexagesimal RA/Dec.
+    - SciencePlots styling from `plot_style.py` is preserved when available; LaTeX text is only disabled when no local `latex` executable is found.
 
 ## Known next steps
 

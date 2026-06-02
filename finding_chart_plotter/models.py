@@ -53,7 +53,7 @@ class ImageData:
 
 @dataclass
 class ChartSettings:
-    slit_width_arcsec: float = 1.0
+    slit_width_arcsec: float = 2.0
     slit_length_arcsec: float = 10.0
     slit_pa_deg: float = 0.0
     psf_magnitude: float = 18.0

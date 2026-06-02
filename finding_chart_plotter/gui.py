@@ -237,7 +237,7 @@ class MainWindow(QMainWindow):
         self.width_spin = QDoubleSpinBox()
         self.width_spin.setRange(0.1, 30.0)
         self.width_spin.setSuffix(" arcsec")
-        self.width_spin.setValue(1.0)
+        self.width_spin.setValue(2.0)
         self.length_spin = QDoubleSpinBox()
         self.length_spin.setRange(1.0, 600.0)
         self.length_spin.setSuffix(" arcsec")
