@@ -1,0 +1,13 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.env
+data/cutouts/
+exports/
+*.fits
+*.fits.gz
+*.fz
+!README.md
