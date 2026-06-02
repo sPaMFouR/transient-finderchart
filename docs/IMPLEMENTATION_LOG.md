@@ -92,6 +92,29 @@
     - Chart title now includes survey image name, target name, and sexagesimal RA/Dec.
     - SciencePlots styling from `plot_style.py` is preserved when available; LaTeX text is only disabled when no local `latex` executable is found.
 
+14. Added finder-chart inset and improved source injection.
+    - Added an in-plot metadata box and a transient-centered inset inspired by `Astro-Sean/finder_chart`.
+    - Added README credit for `Astro-Sean/finder_chart`.
+    - The inset shows a 10 arcsec cutout centered on the transient and includes a 5 arcsec scalebar.
+    - The injected Moffat profile is now normalized as a source-flux kernel instead of an arbitrary peak-only patch.
+    - If Gaia catalog sources are loaded, field-star aperture fluxes and Gaia magnitudes are used to estimate the target flux scale.
+    - Image display normalization is computed from the original image, not the injected image, so bright injected sources do not dim the host galaxy.
+
+15. Improved archive loading and target entry.
+    - Default image mode is now single-band.
+    - Band choices are now survey-specific.
+    - Added direct custom RA/Dec target entry.
+    - Added 2MASS J/H/K image fetching through SkyView.
+    - Legacy Survey FITS HTTP 500 errors now fall back to a JPEG cutout with an approximate centered TAN WCS when possible.
+    - GUI worker errors now show compact user-facing messages while full tracebacks go to stderr.
+    - The plotting canvas now catches render-time errors and displays them on the canvas instead of leaving a blank/unchanged display.
+    - Verified live image loading for Pan-STARRS, DSS2, Legacy Survey, and 2MASS around `SN 2023ixf`.
+
+16. Added contrast controls.
+    - Added auto/manual contrast controls to the GUI.
+    - Default rendering keeps the existing percentile/asinh auto stretch.
+    - Manual vmin/vmax overrides are passed through to the chart renderer.
+
 ## Known next steps
 
 1. Add archive coverage checks that enable/highlight survey tabs before image loading.

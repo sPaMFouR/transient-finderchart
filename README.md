@@ -1,23 +1,48 @@
-# Supernova Finding Chart Plotter
+# TransientFinderchart
 
-PySide6 desktop app for building finding charts for core-collapse supernovae.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
+[![Qt GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20PyQt6-green.svg)](finding_chart_plotter/qt_compat.py)
+[![Astropy](https://img.shields.io/badge/astro-Astropy-purple.svg)](https://www.astropy.org/)
+[![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](docs/IMPLEMENTATION_LOG.md)
 
-## Current scope
+TransientFinderchart is a desktop GUI for making observation-ready finding
+charts for supernovae and other transients. It resolves targets from TNS or
+manual coordinates, downloads archival image cutouts, injects a visual transient
+PSF, overlays slit geometry, and exports annotated charts as PNG, JPG, or PDF.
 
-- Search a target by TNS/IAU name or ZTF/internal name.
-- Fetch coordinates from TNS using environment credentials when available.
-- Download image cutouts from Pan-STARRS, Legacy Survey, or DSS2.
-- Choose color composite or single-band cutouts where the archive supports it.
-- Default field size is 2 arcmin x 2 arcmin.
-- Inject the SN as a visual Moffat PSF at the WCS target position.
-- Draw a crosshair and target label.
-- Draw a north/east compass.
-- Draw a 1 arcmin ruler.
-- Draw a configurable slit.
-- Query Gaia DR3 catalog sources and overlay them on the finding chart.
-- Default slit width is 2 arcsec and default slit length is 10 arcsec.
-- Compute parallactic angle from target, observatory, and date/time.
-- Export finding charts as PNG, JPG, or PDF.
+![Template finding chart](docs/assets/template_finding_chart.png)
+
+## Features
+
+| Area | Options |
+| --- | --- |
+| Target input | TNS/IAU name, ZTF/internal name through TNS, or custom RA/Dec |
+| Archives | Pan-STARRS, Legacy Survey, DSS2, 2MASS |
+| Image modes | Single band by default, color composite where supported |
+| Bands | Survey-specific band dropdowns |
+| Field size | Default 2 arcmin x 2 arcmin, user adjustable |
+| Contrast | Automatic percentile/asinh stretch, or manual `vmin`/`vmax` |
+| Transient injection | Moffat PSF at the transient WCS position |
+| Flux scaling | Gaia field-star scaling when catalog sources are loaded, otherwise image-statistics fallback |
+| Overlays | SN marker, label, slit, north/east compass, 1 arcmin ruler, transient inset |
+| Slit | Default 2 arcsec x 10 arcsec, adjustable width, length, and PA |
+| Parallactic angle | Computed from target, observatory, and date/time |
+| Catalog | Gaia DR3 source query and overlay |
+| Export | PNG, JPG, PDF |
+
+## Image Archives
+
+| Survey | Bands / Modes | Notes |
+| --- | --- | --- |
+| Pan-STARRS | `g r i z y`, color composite | Northern sky coverage, fetched from STScI PS1 services |
+| Legacy Survey | `g r i z`, color composite | FITS cutout first; JPEG fallback with approximate TAN WCS if the FITS service returns HTTP 500 |
+| DSS2 | `red blue ir` | Fetched through SkyView |
+| 2MASS | `J H K` | Fetched through SkyView |
+
+Additional southern/NIR surveys that would be useful future additions include
+VISTA/VHS, VIKING, SkyMapper, DECaLS/NOIRLab services beyond the current Legacy
+Survey endpoint, and DES cutouts where a stable public FITS service is available.
 
 ## Install
 
@@ -60,27 +85,53 @@ PySide6 fails with a Qt symbol error, run with the PyQt6 compatibility path:
 FINDING_CHART_QT_API=pyqt6 python run_finding_chart.py
 ```
 
-The project-local virtual environment created during development can be run
-directly with:
+The project-local virtual environment can be run directly with:
 
 ```bash
 .venv/bin/python run_finding_chart.py
 ```
 
-## First test targets
+## Basic Workflow
+
+1. Search a target by TNS/IAU/ZTF name, or enter custom RA/Dec.
+2. Select an archive, image mode, band, cutout size, and pixel scale.
+3. Load the image cutout.
+4. Optionally query Gaia DR3 for field-star overlays and PSF flux scaling.
+5. Adjust slit PA, slit dimensions, observatory, date/time, and contrast.
+6. Export the finding chart as PNG, JPG, or PDF.
+
+## First Test Targets
 
 - `2023ixf`
 - `2024ggi`
 - `2025wny`
 
+## Observatory Presets
+
+- La Palma
+- Mauna Kea, Hawaii
+- Paranal, Chile
+- Palomar Observatory
+- La Silla, Chile
+- HCT / IAO, India
+- Kanata, Hiroshima
+
 ## Notes
 
 - The date/time control defaults to the current date and time at launch.
 - The PA convention is degrees east of north.
-- The injected magnitude is currently a visual brightness control, not a calibrated photometric injection.
-- The sidebar has two tabs: `Target / Archive` and `Chart / Catalog`.
-- Gaia DR3 catalog overlays are implemented. Pan-STARRS/Legacy Tractor catalog overlays are still future work.
+- The injected PSF is intended for visual finding-chart use, not calibrated photometry.
+- Manual contrast controls override the automatic percentile/asinh stretch.
+- Gaia DR3 overlays are implemented. Pan-STARRS/Legacy Tractor catalog overlays are future work.
+- Legacy Survey FITS server errors fall back to a JPEG cutout with approximate centered TAN WCS when possible.
+- Full worker tracebacks are printed to stderr; the GUI shows compact user-facing error messages.
 
-## Implementation log
+## Acknowledgments
 
-See `docs/IMPLEMENTATION_LOG.md`.
+The in-plot metadata box and transient inset were inspired by Sean Brennan's
+[`Astro-Sean/finder_chart`](https://github.com/Astro-Sean/finder_chart), a
+simple Astropy-based finder-chart script for transient identification.
+
+## Development Log
+
+See [docs/IMPLEMENTATION_LOG.md](docs/IMPLEMENTATION_LOG.md).

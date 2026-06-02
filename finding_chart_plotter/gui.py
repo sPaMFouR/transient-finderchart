@@ -38,7 +38,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from .catalog import CatalogSource, query_gaia_dr3
-from .image_fetchers import ImageFetchError, fetch_image
+from .image_fetchers import available_bands, available_surveys, fetch_image
 from .models import ChartSettings, ImageData, ImageRequest, Target
 from .observatories import OBSERVATORIES, parallactic_angle_deg
 from .renderer import draw_chart, export_chart
@@ -58,12 +58,13 @@ class Worker(QObject):
         try:
             self.finished.emit(self.function(*self.args))
         except Exception as exc:
-            self.failed.emit(f"{exc}\n\n{traceback.format_exc()}")
+            print(traceback.format_exc(), file=sys.stderr)
+            self.failed.emit(compact_error_message(exc))
 
 
 class ChartCanvas(FigureCanvas):
     def __init__(self) -> None:
-        self.figure = Figure(figsize=(7, 7), tight_layout=True)
+        self.figure = Figure(figsize=(7, 7), tight_layout=False)
         super().__init__(self.figure)
         self.image: ImageData | None = None
         self.target: Target | None = None
@@ -82,8 +83,15 @@ class ChartCanvas(FigureCanvas):
             ax.text(0.5, 0.5, "Search a target and load an image", ha="center", va="center")
             ax.set_axis_off()
         else:
-            ax = self.figure.add_subplot(111, projection=self.image.wcs)
-            draw_chart(ax, self.image, self.target, self.settings)
+            try:
+                ax = self.figure.add_subplot(111, projection=self.image.wcs)
+                draw_chart(ax, self.image, self.target, self.settings)
+                self.figure.subplots_adjust(left=0.12, right=0.96, bottom=0.10, top=0.90)
+            except Exception as exc:
+                print(traceback.format_exc(), file=sys.stderr)
+                ax = self.figure.add_subplot(111)
+                ax.text(0.5, 0.5, compact_error_message(exc), ha="center", va="center", wrap=True)
+                ax.set_axis_off()
         self.draw_idle()
 
 
@@ -133,6 +141,21 @@ class MainWindow(QMainWindow):
         form.addRow(self.search_button)
         layout.addWidget(search_box)
 
+        manual_box = QGroupBox("Custom Coordinates")
+        manual_form = QFormLayout(manual_box)
+        self.custom_name_edit = QLineEdit("Custom transient")
+        self.custom_ra_edit = QLineEdit()
+        self.custom_ra_edit.setPlaceholderText("RA, e.g. 14:03:38.56 or 210.9107")
+        self.custom_dec_edit = QLineEdit()
+        self.custom_dec_edit.setPlaceholderText("Dec, e.g. +54:18:41.9")
+        self.custom_button = QPushButton("Use Coordinates")
+        self.custom_button.clicked.connect(self.use_custom_coordinates)
+        manual_form.addRow("Name", self.custom_name_edit)
+        manual_form.addRow("RA", self.custom_ra_edit)
+        manual_form.addRow("Dec", self.custom_dec_edit)
+        manual_form.addRow(self.custom_button)
+        layout.addWidget(manual_box)
+
         info_box = QGroupBox("Target")
         info_layout = QFormLayout(info_box)
         self.target_name_label = QLabel("-")
@@ -150,11 +173,10 @@ class MainWindow(QMainWindow):
         box = QGroupBox("Image Cutout")
         form = QFormLayout(box)
         self.survey_combo = QComboBox()
-        self.survey_combo.addItems(["Pan-STARRS", "Legacy Survey", "DSS2"])
+        self.survey_combo.addItems(available_surveys())
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Color composite", "Single band"])
+        self.mode_combo.addItems(["Single band", "Color composite"])
         self.band_combo = QComboBox()
-        self.band_combo.addItems(["g", "r", "i", "z", "y", "red", "blue", "ir"])
         self.size_spin = QDoubleSpinBox()
         self.size_spin.setRange(0.2, 60.0)
         self.size_spin.setSuffix(" arcmin")
@@ -167,6 +189,9 @@ class MainWindow(QMainWindow):
         self.pixscale_spin.setDecimals(3)
         self.load_button = QPushButton("Load Image")
         self.load_button.clicked.connect(self.load_image)
+        self.survey_combo.currentTextChanged.connect(self.update_band_choices)
+        self.mode_combo.currentTextChanged.connect(self.update_band_choices)
+        self.update_band_choices()
         form.addRow("Survey", self.survey_combo)
         form.addRow("Mode", self.mode_combo)
         form.addRow("Band", self.band_combo)
@@ -272,6 +297,27 @@ class MainWindow(QMainWindow):
         source_form.addRow("FWHM", self.fwhm_spin)
         layout.addWidget(source_box)
 
+        contrast_box = QGroupBox("Contrast")
+        contrast_form = QFormLayout(contrast_box)
+        self.auto_contrast_check = QCheckBox("Auto")
+        self.auto_contrast_check.setChecked(True)
+        self.vmin_spin = QDoubleSpinBox()
+        self.vmin_spin.setRange(-1.0e12, 1.0e12)
+        self.vmin_spin.setDecimals(4)
+        self.vmin_spin.setEnabled(False)
+        self.vmax_spin = QDoubleSpinBox()
+        self.vmax_spin.setRange(-1.0e12, 1.0e12)
+        self.vmax_spin.setDecimals(4)
+        self.vmax_spin.setEnabled(False)
+        self.reset_contrast_button = QPushButton("Use image range")
+        self.reset_contrast_button.clicked.connect(self.reset_contrast_from_image)
+        self.auto_contrast_check.stateChanged.connect(self.toggle_contrast_controls)
+        contrast_form.addRow(self.auto_contrast_check)
+        contrast_form.addRow("vmin", self.vmin_spin)
+        contrast_form.addRow("vmax", self.vmax_spin)
+        contrast_form.addRow(self.reset_contrast_button)
+        layout.addWidget(contrast_box)
+
         overlay_box = QGroupBox("Overlays")
         grid = QGridLayout(overlay_box)
         self.crosshair_check = QCheckBox("Crosshair/label")
@@ -313,7 +359,10 @@ class MainWindow(QMainWindow):
             self.length_spin,
             self.mag_spin,
             self.fwhm_spin,
+            self.vmin_spin,
+            self.vmax_spin,
             self.inject_check,
+            self.auto_contrast_check,
             self.crosshair_check,
             self.slit_check,
             self.compass_check,
@@ -342,6 +391,18 @@ class MainWindow(QMainWindow):
         self.search_button.setEnabled(False)
         self._run_worker("Searching TNS...", self.tns_client.lookup, self._target_loaded, self.name_edit.text())
 
+    def use_custom_coordinates(self) -> None:
+        try:
+            coord = SkyCoord(self.custom_ra_edit.text().strip(), self.custom_dec_edit.text().strip(), unit=(u.hourangle, u.deg))
+        except Exception:
+            try:
+                coord = SkyCoord(float(self.custom_ra_edit.text().strip()) * u.deg, float(self.custom_dec_edit.text().strip()) * u.deg)
+            except Exception as exc:
+                self.show_error(f"Could not parse custom RA/Dec. Use sexagesimal RA/Dec or decimal degrees.\n{exc}")
+                return
+        name = self.custom_name_edit.text().strip() or "Custom transient"
+        self._target_loaded(Target(display_name=name, ra_deg=coord.ra.deg, dec_deg=coord.dec.deg))
+
     def _target_loaded(self, target: Target) -> None:
         self.search_button.setEnabled(True)
         self.target = target
@@ -353,6 +414,16 @@ class MainWindow(QMainWindow):
         self.host_label.setText(target.host_name or "-")
         self.status_label.setText(f"Loaded target {target.label}")
         self.set_pa_to_parallactic()
+
+    def update_band_choices(self) -> None:
+        current = self.band_combo.currentText() if hasattr(self, "band_combo") else ""
+        bands = available_bands(self.survey_combo.currentText(), self.mode_combo.currentText())
+        self.band_combo.blockSignals(True)
+        self.band_combo.clear()
+        self.band_combo.addItems(bands)
+        if current in bands:
+            self.band_combo.setCurrentText(current)
+        self.band_combo.blockSignals(False)
 
     def load_image(self) -> None:
         if self.target is None:
@@ -371,6 +442,7 @@ class MainWindow(QMainWindow):
     def _image_loaded(self, image: ImageData) -> None:
         self.load_button.setEnabled(True)
         self.image = image
+        self.reset_contrast_from_image()
         self.status_label.setText(f"Loaded {image.survey} {image.band}")
         self.update_chart_from_controls()
 
@@ -396,6 +468,9 @@ class MainWindow(QMainWindow):
             observation_time=qdatetime_to_datetime(self.datetime_edit.dateTime()),
             observatory_name=self.observatory_combo.currentText(),
             catalog_sources=list(self.catalog_sources),
+            auto_contrast=self.auto_contrast_check.isChecked(),
+            vmin=self.vmin_spin.value(),
+            vmax=self.vmax_spin.value(),
         )
 
     def update_chart_from_controls(self) -> None:
@@ -422,7 +497,7 @@ class MainWindow(QMainWindow):
             self.show_error("Load an image before exporting.")
             return
         default_name = f"{self.target.label.replace(' ', '_')}_finding_chart.png"
-        path, _ = QFileDialog.getSaveFileName(
+        path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Export finding chart",
             str(Path.cwd() / default_name),
@@ -430,8 +505,9 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-        export_chart(Path(path), self.image, self.target, self._sync_settings_from_controls())
-        self.status_label.setText(f"Exported {path}")
+        output_path = ensure_export_suffix(Path(path), selected_filter)
+        export_chart(output_path, self.image, self.target, self._sync_settings_from_controls())
+        self.status_label.setText(f"Exported {output_path}")
 
     def query_catalog(self) -> None:
         if self.target is None:
@@ -460,6 +536,30 @@ class MainWindow(QMainWindow):
         self.catalog_text.setPlainText("Catalog overlay cleared.")
         self.update_chart_from_controls()
 
+    def toggle_contrast_controls(self) -> None:
+        manual = not self.auto_contrast_check.isChecked()
+        self.vmin_spin.setEnabled(manual)
+        self.vmax_spin.setEnabled(manual)
+        self.update_chart_from_controls()
+
+    def reset_contrast_from_image(self) -> None:
+        if self.image is None:
+            return
+        import numpy as np
+
+        data = np.asarray(self.image.data, dtype=float)
+        finite = data[np.isfinite(data)]
+        if finite.size == 0:
+            return
+        lo, hi = np.nanpercentile(finite, [1, 99.3])
+        self.vmin_spin.blockSignals(True)
+        self.vmax_spin.blockSignals(True)
+        self.vmin_spin.setValue(float(lo))
+        self.vmax_spin.setValue(float(hi))
+        self.vmin_spin.blockSignals(False)
+        self.vmax_spin.blockSignals(False)
+        self.update_chart_from_controls()
+
     def show_error(self, message: str) -> None:
         QMessageBox.critical(self, "Finding Chart Plotter", message)
 
@@ -469,3 +569,29 @@ def main() -> None:
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
+
+
+def compact_error_message(exc: Exception) -> str:
+    text = str(exc).strip() or exc.__class__.__name__
+    lower = text.lower()
+    if "archive server error" in lower or "server error 5" in lower:
+        return text
+    if "no pan-starrs coverage" in lower:
+        return text
+    if "skyview returned html" in lower:
+        return text
+    if "no image data" in lower or "no celestial wcs" in lower:
+        return f"Image download did not return a usable WCS image. {text}"
+    if len(text) > 420:
+        return text[:417].rstrip() + "..."
+    return text
+
+
+def ensure_export_suffix(path: Path, selected_filter: str) -> Path:
+    if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".pdf"}:
+        return path
+    if selected_filter.startswith("JPEG"):
+        return path.with_suffix(".jpg")
+    if selected_filter.startswith("PDF"):
+        return path.with_suffix(".pdf")
+    return path.with_suffix(".png")

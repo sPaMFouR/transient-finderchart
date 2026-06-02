@@ -22,6 +22,34 @@ class ImageFetchError(RuntimeError):
     pass
 
 
+SURVEY_BANDS: dict[str, dict[str, list[str]]] = {
+    "Pan-STARRS": {
+        "Single band": ["g", "r", "i", "z", "y"],
+        "Color composite": ["gri"],
+    },
+    "Legacy Survey": {
+        "Single band": ["g", "r", "i", "z"],
+        "Color composite": ["grz"],
+    },
+    "DSS2": {
+        "Single band": ["red", "blue", "ir"],
+        "Color composite": ["red"],
+    },
+    "2MASS": {
+        "Single band": ["J", "H", "K"],
+        "Color composite": ["JHK"],
+    },
+}
+
+
+def available_surveys() -> list[str]:
+    return list(SURVEY_BANDS)
+
+
+def available_bands(survey: str, mode: str) -> list[str]:
+    return SURVEY_BANDS.get(survey, {}).get(mode, [])
+
+
 def _normalize_channel(data: np.ndarray) -> np.ndarray:
     finite = data[np.isfinite(data)]
     if finite.size == 0:
@@ -63,7 +91,14 @@ def _read_fits_from_bytes(payload: bytes, survey: str, band: str, mode: str, url
 def _request_bytes(url: str, timeout: float = 120.0) -> bytes:
     response = requests.get(url, timeout=timeout)
     if response.status_code >= 400:
-        raise ImageFetchError(response.text.replace("\n", " ")[:500])
+        body = response.text.replace("\n", " ").strip()
+        if response.status_code >= 500:
+            raise ImageFetchError(
+                f"Archive server error {response.status_code}. "
+                f"The remote image service failed for this field; try another survey, band, or smaller cutout. "
+                f"{body[:180]}"
+            )
+        raise ImageFetchError(f"Archive request failed with HTTP {response.status_code}. {body[:240]}")
     return response.content
 
 
@@ -74,6 +109,8 @@ def fetch_image(target: Target, request: ImageRequest) -> ImageData:
         return fetch_legacy(target, request)
     if request.survey == "DSS2":
         return fetch_dss2(target, request)
+    if request.survey == "2MASS":
+        return fetch_2mass(target, request)
     raise ImageFetchError(f"Unsupported survey: {request.survey}")
 
 
@@ -140,7 +177,44 @@ def fetch_legacy(target: Target, request: ImageRequest) -> ImageData:
         "bands": band,
     }
     url = "https://www.legacysurvey.org/viewer/fits-cutout?" + urlencode(params)
-    return _read_fits_from_bytes(_request_bytes(url), "Legacy Survey", band, request.mode, url)
+    try:
+        return _read_fits_from_bytes(_request_bytes(url), "Legacy Survey", band, request.mode, url)
+    except ImageFetchError as exc:
+        if "server error 5" not in str(exc).lower():
+            raise
+        return fetch_legacy_jpeg_fallback(target, request, band, str(exc))
+
+
+def fetch_legacy_jpeg_fallback(target: Target, request: ImageRequest, band: str, reason: str) -> ImageData:
+    params = {
+        "ra": target.ra_deg,
+        "dec": target.dec_deg,
+        "size": min(request.size_pixels, 3000),
+        "layer": "ls-dr10",
+        "pixscale": request.pixel_scale_arcsec,
+        "bands": band,
+    }
+    url = "https://www.legacysurvey.org/viewer/jpeg-cutout?" + urlencode(params)
+    payload = _request_bytes(url)
+    try:
+        image = Image.open(io.BytesIO(payload)).convert("RGB")
+    except Exception as exc:
+        raise ImageFetchError(
+            "Legacy Survey FITS cutout failed, and the JPEG fallback could not be decoded. "
+            f"Original FITS error: {reason}"
+        ) from exc
+    data = np.asarray(image, dtype=float) / 255.0
+    wcs = centered_tan_wcs(target, data.shape[1], data.shape[0], request.pixel_scale_arcsec)
+    return ImageData(data=data, wcs=wcs, survey="Legacy Survey", band=f"{band} JPEG", mode=request.mode, source_url=url)
+
+
+def centered_tan_wcs(target: Target, nx: int, ny: int, pixscale_arcsec: float) -> WCS:
+    wcs = WCS(naxis=2)
+    wcs.wcs.crpix = [(nx + 1) / 2.0, (ny + 1) / 2.0]
+    wcs.wcs.cdelt = np.array([-pixscale_arcsec / 3600.0, pixscale_arcsec / 3600.0])
+    wcs.wcs.crval = [target.ra_deg, target.dec_deg]
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    return wcs
 
 
 def fetch_dss2(target: Target, request: ImageRequest) -> ImageData:
@@ -172,6 +246,36 @@ def fetch_dss2(target: Target, request: ImageRequest) -> ImageData:
         payload = _request_bytes(fits_url, timeout=180.0)
         url = fits_url
     return _read_fits_from_bytes(payload, "DSS2", survey_name, request.mode, url)
+
+
+def fetch_2mass(target: Target, request: ImageRequest) -> ImageData:
+    band_map = {
+        "j": "2MASS-J",
+        "h": "2MASS-H",
+        "k": "2MASS-K",
+    }
+    band = request.band if request.mode == "Single band" else "J"
+    survey_name = band_map.get(band.lower(), "2MASS-J")
+    params = {
+        "Position": f"{target.ra_deg},{target.dec_deg}",
+        "Survey": survey_name,
+        "Return": "FITS",
+        "Pixels": request.size_pixels,
+        "Size": request.size_arcmin / 60.0,
+    }
+    url = "https://skyview.gsfc.nasa.gov/current/cgi/runquery.pl?" + urlencode(params)
+    payload = _request_bytes(url, timeout=180.0)
+    if payload[:6].lower().startswith(b"<html"):
+        text = payload.decode("utf-8", errors="ignore")
+        match = re.search(r'href="([^"]+\.fits[^"]*)"', text, flags=re.IGNORECASE)
+        if not match:
+            raise ImageFetchError("SkyView returned HTML instead of a 2MASS FITS image.")
+        fits_url = match.group(1)
+        if fits_url.startswith("/"):
+            fits_url = "https://skyview.gsfc.nasa.gov" + fits_url
+        payload = _request_bytes(fits_url, timeout=180.0)
+        url = fits_url
+    return _read_fits_from_bytes(payload, "2MASS", survey_name, "Single band", url)
 
 
 def save_preview_png(image: ImageData, path: Path) -> None:
