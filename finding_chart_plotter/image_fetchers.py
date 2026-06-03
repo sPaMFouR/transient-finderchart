@@ -205,7 +205,7 @@ def fetch_legacy_jpeg_fallback(target: Target, request: ImageRequest, band: str,
         ) from exc
     data = np.asarray(image, dtype=float) / 255.0
     wcs = centered_tan_wcs(target, data.shape[1], data.shape[0], request.pixel_scale_arcsec)
-    return ImageData(data=data, wcs=wcs, survey="Legacy Survey", band=f"{band} JPEG", mode=request.mode, source_url=url)
+    return ImageData(data=data, wcs=wcs, survey="Legacy Survey", band=band, mode=request.mode, source_url=url)
 
 
 def centered_tan_wcs(target: Target, nx: int, ny: int, pixscale_arcsec: float) -> WCS:
@@ -219,13 +219,13 @@ def centered_tan_wcs(target: Target, nx: int, ny: int, pixscale_arcsec: float) -
 
 def fetch_dss2(target: Target, request: ImageRequest) -> ImageData:
     survey_map = {
-        "red": "DSS2 Red",
-        "blue": "DSS2 Blue",
-        "ir": "DSS2 IR",
-        "r": "DSS2 Red",
-        "b": "DSS2 Blue",
+        "red": ("DSS2 Red", "Red"),
+        "blue": ("DSS2 Blue", "Blue"),
+        "ir": ("DSS2 IR", "IR"),
+        "r": ("DSS2 Red", "Red"),
+        "b": ("DSS2 Blue", "Blue"),
     }
-    survey_name = survey_map.get(request.band.lower(), "DSS2 Red")
+    survey_name, band_label = survey_map.get(request.band.lower(), ("DSS2 Red", "Red"))
     params = {
         "Position": f"{target.ra_deg},{target.dec_deg}",
         "Survey": survey_name,
@@ -245,17 +245,17 @@ def fetch_dss2(target: Target, request: ImageRequest) -> ImageData:
             fits_url = "https://skyview.gsfc.nasa.gov" + fits_url
         payload = _request_bytes(fits_url, timeout=180.0)
         url = fits_url
-    return _read_fits_from_bytes(payload, "DSS2", survey_name, request.mode, url)
+    return _read_fits_from_bytes(payload, "DSS2", band_label, request.mode, url)
 
 
 def fetch_2mass(target: Target, request: ImageRequest) -> ImageData:
     band_map = {
-        "j": "2MASS-J",
-        "h": "2MASS-H",
-        "k": "2MASS-K",
+        "j": ("2MASS-J", "J"),
+        "h": ("2MASS-H", "H"),
+        "k": ("2MASS-K", "K"),
     }
     band = request.band if request.mode == "Single band" else "J"
-    survey_name = band_map.get(band.lower(), "2MASS-J")
+    survey_name, band_label = band_map.get(band.lower(), ("2MASS-J", "J"))
     params = {
         "Position": f"{target.ra_deg},{target.dec_deg}",
         "Survey": survey_name,
@@ -275,7 +275,7 @@ def fetch_2mass(target: Target, request: ImageRequest) -> ImageData:
             fits_url = "https://skyview.gsfc.nasa.gov" + fits_url
         payload = _request_bytes(fits_url, timeout=180.0)
         url = fits_url
-    return _read_fits_from_bytes(payload, "2MASS", survey_name, "Single band", url)
+    return _read_fits_from_bytes(payload, "2MASS", band_label, "Single band", url)
 
 
 def save_preview_png(image: ImageData, path: Path) -> None:

@@ -21,12 +21,12 @@ PSF, overlays slit geometry, and exports annotated charts as PNG, JPG, or PDF.
 | Archives | Pan-STARRS, Legacy Survey, DSS2, 2MASS |
 | Image modes | Single band by default, color composite where supported |
 | Bands | Survey-specific band dropdowns |
-| Field size | Default 2 arcmin x 2 arcmin, user adjustable |
+| Field size | Default 3 arcmin x 3 arcmin, user adjustable |
 | Contrast | Automatic percentile/asinh stretch, or manual `vmin`/`vmax` |
-| Transient injection | Moffat PSF at the transient WCS position |
+| Transient injection | Empirical field-star PSF at the transient WCS position, with Moffat fallback |
 | Flux scaling | Gaia field-star scaling when catalog sources are loaded, otherwise image-statistics fallback |
-| Overlays | SN marker, label, slit, north/east compass, 1 arcmin ruler, transient inset |
-| Slit | Default 2 arcsec x 10 arcsec, adjustable width, length, and PA |
+| Overlays | SN marker, label, optional slit, north/east compass, 1 arcmin ruler, 30 arcsec transient inset |
+| Slit | Off by default; 2 arcsec x 20 arcsec when enabled, adjustable width, length, and fixed PA east of north |
 | Parallactic angle | Computed from target, observatory, and date/time |
 | Catalog | Gaia DR3 source query and overlay |
 | Export | PNG, JPG, PDF |

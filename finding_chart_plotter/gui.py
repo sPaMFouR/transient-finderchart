@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import traceback
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -39,10 +40,15 @@ from matplotlib.figure import Figure
 
 from .catalog import CatalogSource, query_gaia_dr3
 from .image_fetchers import available_bands, available_surveys, fetch_image
+from .mpl_compat import ensure_astropy_wcsaxes_compat
 from .models import ChartSettings, ImageData, ImageRequest, Target
 from .observatories import OBSERVATORIES, parallactic_angle_deg
 from .renderer import draw_chart, export_chart
 from .tns import TNSClient, TNSLookupError
+
+
+ensure_astropy_wcsaxes_compat()
+warnings.filterwarnings("ignore", message="Tight layout not applied.*", category=UserWarning)
 
 
 class Worker(QObject):
@@ -64,7 +70,7 @@ class Worker(QObject):
 
 class ChartCanvas(FigureCanvas):
     def __init__(self) -> None:
-        self.figure = Figure(figsize=(7, 7), tight_layout=False)
+        self.figure = Figure(figsize=(10, 10), tight_layout=False)
         super().__init__(self.figure)
         self.image: ImageData | None = None
         self.target: Target | None = None
@@ -141,33 +147,21 @@ class MainWindow(QMainWindow):
         form.addRow(self.search_button)
         layout.addWidget(search_box)
 
-        manual_box = QGroupBox("Custom Coordinates")
-        manual_form = QFormLayout(manual_box)
-        self.custom_name_edit = QLineEdit("Custom transient")
-        self.custom_ra_edit = QLineEdit()
-        self.custom_ra_edit.setPlaceholderText("RA, e.g. 14:03:38.56 or 210.9107")
-        self.custom_dec_edit = QLineEdit()
-        self.custom_dec_edit.setPlaceholderText("Dec, e.g. +54:18:41.9")
-        self.custom_button = QPushButton("Use Coordinates")
-        self.custom_button.clicked.connect(self.use_custom_coordinates)
-        manual_form.addRow("Name", self.custom_name_edit)
-        manual_form.addRow("RA", self.custom_ra_edit)
-        manual_form.addRow("Dec", self.custom_dec_edit)
-        manual_form.addRow(self.custom_button)
-        layout.addWidget(manual_box)
-
         info_box = QGroupBox("Target")
         info_layout = QFormLayout(info_box)
-        self.target_name_label = QLabel("-")
-        self.ra_label = QLabel("-")
-        self.dec_label = QLabel("-")
+        self.target_name_edit = QLineEdit()
+        self.target_name_edit.setPlaceholderText("Target label used on chart")
+        self.ra_edit = QLineEdit()
+        self.ra_edit.setPlaceholderText("RA, e.g. 14:03:38.56 or 210.9107")
+        self.dec_edit = QLineEdit()
+        self.dec_edit.setPlaceholderText("Dec, e.g. +54:18:41.9")
         self.type_label = QLabel("-")
-        self.host_label = QLabel("-")
-        info_layout.addRow("Name", self.target_name_label)
-        info_layout.addRow("RA", self.ra_label)
-        info_layout.addRow("Dec", self.dec_label)
-        info_layout.addRow("Type", self.type_label)
-        info_layout.addRow("Host", self.host_label)
+        self.use_coordinates_button = QPushButton("Use Coordinates")
+        self.use_coordinates_button.clicked.connect(self.use_custom_coordinates)
+        info_layout.addRow("Name", self.target_name_edit)
+        info_layout.addRow("RA", self.ra_edit)
+        info_layout.addRow("Dec", self.dec_edit)
+        info_layout.addRow(self.use_coordinates_button)
         layout.addWidget(info_box)
 
         box = QGroupBox("Image Cutout")
@@ -180,7 +174,7 @@ class MainWindow(QMainWindow):
         self.size_spin = QDoubleSpinBox()
         self.size_spin.setRange(0.2, 60.0)
         self.size_spin.setSuffix(" arcmin")
-        self.size_spin.setValue(2.0)
+        self.size_spin.setValue(3.0)
         self.size_spin.setDecimals(2)
         self.pixscale_spin = QDoubleSpinBox()
         self.pixscale_spin.setRange(0.05, 5.0)
@@ -199,6 +193,28 @@ class MainWindow(QMainWindow):
         form.addRow("Pixel scale", self.pixscale_spin)
         form.addRow(self.load_button)
         layout.addWidget(box)
+
+        contrast_box = QGroupBox("Contrast")
+        contrast_form = QFormLayout(contrast_box)
+        self.auto_contrast_check = QCheckBox("Auto")
+        self.auto_contrast_check.setChecked(True)
+        self.vmin_spin = QDoubleSpinBox()
+        self.vmin_spin.setRange(-1.0e12, 1.0e12)
+        self.vmin_spin.setDecimals(4)
+        self.vmin_spin.setEnabled(False)
+        self.vmax_spin = QDoubleSpinBox()
+        self.vmax_spin.setRange(-1.0e12, 1.0e12)
+        self.vmax_spin.setDecimals(4)
+        self.vmax_spin.setEnabled(False)
+        self.reset_contrast_button = QPushButton("Use image range")
+        self.reset_contrast_button.clicked.connect(self.reset_contrast_from_image)
+        self.auto_contrast_check.stateChanged.connect(self.toggle_contrast_controls)
+        contrast_form.addRow(self.auto_contrast_check)
+        contrast_form.addRow("vmin", self.vmin_spin)
+        contrast_form.addRow("vmax", self.vmax_spin)
+        contrast_form.addRow(self.reset_contrast_button)
+        layout.addWidget(contrast_box)
+
         layout.addStretch(1)
         return page
 
@@ -216,7 +232,7 @@ class MainWindow(QMainWindow):
         self.size_spin = QDoubleSpinBox()
         self.size_spin.setRange(0.2, 60.0)
         self.size_spin.setSuffix(" arcmin")
-        self.size_spin.setValue(2.0)
+        self.size_spin.setValue(3.0)
         self.size_spin.setDecimals(2)
         self.pixscale_spin = QDoubleSpinBox()
         self.pixscale_spin.setRange(0.05, 5.0)
@@ -246,7 +262,7 @@ class MainWindow(QMainWindow):
         self.datetime_edit = QDateTimeEdit(datetime.now())
         self.datetime_edit.setCalendarPopup(True)
         self.datetime_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-        self.parallactic_button = QPushButton("Set PA to parallactic")
+        self.parallactic_button = QPushButton("Set PA to parallactic now")
         self.parallactic_button.clicked.connect(self.set_pa_to_parallactic)
         obs_form.addRow("Observatory", self.observatory_combo)
         obs_form.addRow("Date/time", self.datetime_edit)
@@ -255,6 +271,8 @@ class MainWindow(QMainWindow):
 
         slit_box = QGroupBox("Slit")
         slit_form = QFormLayout(slit_box)
+        self.slit_check = QCheckBox("Draw slit")
+        self.slit_check.setChecked(False)
         self.pa_spin = QDoubleSpinBox()
         self.pa_spin.setRange(-360.0, 360.0)
         self.pa_spin.setSuffix(" deg")
@@ -266,7 +284,7 @@ class MainWindow(QMainWindow):
         self.length_spin = QDoubleSpinBox()
         self.length_spin.setRange(1.0, 600.0)
         self.length_spin.setSuffix(" arcsec")
-        self.length_spin.setValue(10.0)
+        self.length_spin.setValue(20.0)
         rotate_layout = QHBoxLayout()
         self.rotate_left_button = QPushButton("-5 deg")
         self.rotate_right_button = QPushButton("+5 deg")
@@ -274,7 +292,8 @@ class MainWindow(QMainWindow):
         self.rotate_right_button.clicked.connect(lambda: self.rotate_pa(5.0))
         rotate_layout.addWidget(self.rotate_left_button)
         rotate_layout.addWidget(self.rotate_right_button)
-        slit_form.addRow("PA", self.pa_spin)
+        slit_form.addRow(self.slit_check)
+        slit_form.addRow("PA (E of N)", self.pa_spin)
         slit_form.addRow("Width", self.width_spin)
         slit_form.addRow("Length", self.length_spin)
         slit_form.addRow(rotate_layout)
@@ -282,53 +301,29 @@ class MainWindow(QMainWindow):
 
         source_box = QGroupBox("Injected SN")
         source_form = QFormLayout(source_box)
-        self.inject_check = QCheckBox("Show Moffat PSF")
+        self.inject_check = QCheckBox("Show empirical PSF")
         self.inject_check.setChecked(True)
-        self.mag_spin = QDoubleSpinBox()
-        self.mag_spin.setRange(8.0, 28.0)
-        self.mag_spin.setValue(18.0)
-        self.mag_spin.setDecimals(2)
+        self.brightness_spin = QDoubleSpinBox()
+        self.brightness_spin.setRange(0.0, 10.0)
+        self.brightness_spin.setValue(5.0)
+        self.brightness_spin.setDecimals(1)
         self.fwhm_spin = QDoubleSpinBox()
         self.fwhm_spin.setRange(0.1, 10.0)
         self.fwhm_spin.setValue(1.0)
         self.fwhm_spin.setSuffix(" arcsec")
         source_form.addRow(self.inject_check)
-        source_form.addRow("Visual mag", self.mag_spin)
+        source_form.addRow("Brightness", self.brightness_spin)
         source_form.addRow("FWHM", self.fwhm_spin)
         layout.addWidget(source_box)
-
-        contrast_box = QGroupBox("Contrast")
-        contrast_form = QFormLayout(contrast_box)
-        self.auto_contrast_check = QCheckBox("Auto")
-        self.auto_contrast_check.setChecked(True)
-        self.vmin_spin = QDoubleSpinBox()
-        self.vmin_spin.setRange(-1.0e12, 1.0e12)
-        self.vmin_spin.setDecimals(4)
-        self.vmin_spin.setEnabled(False)
-        self.vmax_spin = QDoubleSpinBox()
-        self.vmax_spin.setRange(-1.0e12, 1.0e12)
-        self.vmax_spin.setDecimals(4)
-        self.vmax_spin.setEnabled(False)
-        self.reset_contrast_button = QPushButton("Use image range")
-        self.reset_contrast_button.clicked.connect(self.reset_contrast_from_image)
-        self.auto_contrast_check.stateChanged.connect(self.toggle_contrast_controls)
-        contrast_form.addRow(self.auto_contrast_check)
-        contrast_form.addRow("vmin", self.vmin_spin)
-        contrast_form.addRow("vmax", self.vmax_spin)
-        contrast_form.addRow(self.reset_contrast_button)
-        layout.addWidget(contrast_box)
 
         overlay_box = QGroupBox("Overlays")
         grid = QGridLayout(overlay_box)
         self.crosshair_check = QCheckBox("Crosshair/label")
         self.crosshair_check.setChecked(True)
-        self.slit_check = QCheckBox("Slit")
-        self.slit_check.setChecked(True)
         self.compass_check = QCheckBox("North/east")
         self.compass_check.setChecked(True)
         grid.addWidget(self.crosshair_check, 0, 0)
-        grid.addWidget(self.slit_check, 0, 1)
-        grid.addWidget(self.compass_check, 1, 0)
+        grid.addWidget(self.compass_check, 0, 1)
         layout.addWidget(overlay_box)
 
         catalog_box = QGroupBox("Catalog")
@@ -348,16 +343,22 @@ class MainWindow(QMainWindow):
         catalog_layout.addWidget(self.catalog_text)
         layout.addWidget(catalog_box)
 
-        self.export_button = QPushButton("Export Chart")
+        self.export_button = QPushButton("Save FC as PNG / JPG / PDF")
+        self.export_button.setStyleSheet(
+            "QPushButton { background-color: #c0392b; color: white; font-weight: bold; padding: 8px; }"
+            "QPushButton:hover { background-color: #a93226; }"
+            "QPushButton:pressed { background-color: #922b21; }"
+        )
         self.export_button.clicked.connect(self.export_current_chart)
         layout.addWidget(self.export_button)
+
         layout.addStretch(1)
 
         for widget in (
             self.pa_spin,
             self.width_spin,
             self.length_spin,
-            self.mag_spin,
+            self.brightness_spin,
             self.fwhm_spin,
             self.vmin_spin,
             self.vmax_spin,
@@ -371,6 +372,8 @@ class MainWindow(QMainWindow):
                 widget.valueChanged.connect(self.update_chart_from_controls)
             else:
                 widget.stateChanged.connect(self.update_chart_from_controls)
+        self.observatory_combo.currentTextChanged.connect(self.update_pa_from_mode)
+        self.datetime_edit.dateTimeChanged.connect(self.update_pa_from_mode)
         return page
 
     def _run_worker(self, label: str, function, success_callback, *args) -> None:
@@ -389,31 +392,35 @@ class MainWindow(QMainWindow):
 
     def search_target(self) -> None:
         self.search_button.setEnabled(False)
+        searched_name = self.name_edit.text().strip()
+        if searched_name:
+            self.target_name_edit.setText(searched_name)
         self._run_worker("Searching TNS...", self.tns_client.lookup, self._target_loaded, self.name_edit.text())
 
     def use_custom_coordinates(self) -> None:
+        ra_text = self.ra_edit.text().strip()
+        dec_text = self.dec_edit.text().strip()
         try:
-            coord = SkyCoord(self.custom_ra_edit.text().strip(), self.custom_dec_edit.text().strip(), unit=(u.hourangle, u.deg))
+            coord = SkyCoord(ra_text, dec_text, unit=(u.hourangle, u.deg))
         except Exception:
             try:
-                coord = SkyCoord(float(self.custom_ra_edit.text().strip()) * u.deg, float(self.custom_dec_edit.text().strip()) * u.deg)
+                coord = SkyCoord(float(ra_text) * u.deg, float(dec_text) * u.deg)
             except Exception as exc:
                 self.show_error(f"Could not parse custom RA/Dec. Use sexagesimal RA/Dec or decimal degrees.\n{exc}")
                 return
-        name = self.custom_name_edit.text().strip() or "Custom transient"
+        name = self.target_name_edit.text().strip() or self.name_edit.text().strip() or "Custom transient"
         self._target_loaded(Target(display_name=name, ra_deg=coord.ra.deg, dec_deg=coord.dec.deg))
 
     def _target_loaded(self, target: Target) -> None:
         self.search_button.setEnabled(True)
         self.target = target
         self.catalog_sources = []
-        self.target_name_label.setText(target.label)
-        self.ra_label.setText(f"{target.ra_deg:.7f}")
-        self.dec_label.setText(f"{target.dec_deg:.7f}")
+        self.target_name_edit.setText(target.label)
+        self.ra_edit.setText(target_coord_strings(target)[0])
+        self.dec_edit.setText(target_coord_strings(target)[1])
         self.type_label.setText(target.transient_type or "-")
-        self.host_label.setText(target.host_name or "-")
         self.status_label.setText(f"Loaded target {target.label}")
-        self.set_pa_to_parallactic()
+        self.update_chart_from_controls()
 
     def update_band_choices(self) -> None:
         current = self.band_combo.currentText() if hasattr(self, "band_combo") else ""
@@ -455,11 +462,13 @@ class MainWindow(QMainWindow):
         self.show_error(message)
 
     def _sync_settings_from_controls(self) -> ChartSettings:
+        requested_pa = self.pa_spin.value()
         return ChartSettings(
             slit_width_arcsec=self.width_spin.value(),
             slit_length_arcsec=self.length_spin.value(),
-            slit_pa_deg=self.pa_spin.value(),
-            psf_magnitude=self.mag_spin.value(),
+            slit_pa_deg=requested_pa,
+            slit_pa_mode="Fixed sky PA",
+            psf_brightness=self.brightness_spin.value(),
             psf_fwhm_arcsec=self.fwhm_spin.value(),
             show_injected_source=self.inject_check.isChecked(),
             show_crosshair=self.crosshair_check.isChecked(),
@@ -482,15 +491,24 @@ class MainWindow(QMainWindow):
     def set_pa_to_parallactic(self) -> None:
         if self.target is None:
             return
-        coord = SkyCoord(self.target.ra_deg * u.deg, self.target.dec_deg * u.deg)
-        obs = OBSERVATORIES[self.observatory_combo.currentText()]
-        q = parallactic_angle_deg(coord, obs, Time(qdatetime_to_datetime(self.datetime_edit.dateTime())))
+        q = self.parallactic_pa_deg()
         self.pa_spin.setValue(q)
+        self.slit_check.setChecked(True)
+        self.status_label.setText(f"Fixed slit PA set to current parallactic angle {q:.2f} deg")
+
+    def update_pa_from_mode(self) -> None:
         self.update_chart_from_controls()
-        self.status_label.setText(f"Parallactic angle set to {q:.2f} deg")
 
     def rotate_pa(self, delta: float) -> None:
         self.pa_spin.setValue(self.pa_spin.value() + delta)
+        self.slit_check.setChecked(True)
+
+    def parallactic_pa_deg(self) -> float:
+        if self.target is None:
+            return 0.0
+        coord = SkyCoord(self.target.ra_deg * u.deg, self.target.dec_deg * u.deg)
+        obs = OBSERVATORIES[self.observatory_combo.currentText()]
+        return parallactic_angle_deg(coord, obs, Time(qdatetime_to_datetime(self.datetime_edit.dateTime())))
 
     def export_current_chart(self) -> None:
         if self.image is None or self.target is None:
@@ -595,3 +613,11 @@ def ensure_export_suffix(path: Path, selected_filter: str) -> Path:
     if selected_filter.startswith("PDF"):
         return path.with_suffix(".pdf")
     return path.with_suffix(".png")
+
+
+def target_coord_strings(target: Target) -> tuple[str, str]:
+    coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+    return (
+        coord.ra.to_string(unit=u.hour, sep=":", precision=2, pad=True),
+        coord.dec.to_string(unit=u.deg, sep=":", precision=1, alwayssign=True, pad=True),
+    )
