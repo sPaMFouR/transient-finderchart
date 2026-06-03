@@ -11,7 +11,7 @@ charts for supernovae and other transients. It resolves targets from TNS or
 manual coordinates, downloads archival image cutouts, injects a visual transient
 PSF, overlays slit geometry, and exports annotated charts as PNG, JPG, or PDF.
 
-![Template finding chart](docs/assets/template_finding_chart.png)
+![Template finding chart](docs/assets/SN2023ixf_finding_chart)
 
 ## Features
 

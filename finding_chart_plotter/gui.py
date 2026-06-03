@@ -104,7 +104,7 @@ class ChartCanvas(FigureCanvas):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Supernova Finding Chart Plotter")
+        self.setWindowTitle("Transient Finding Chart Plotter")
         self.resize(1280, 860)
         self.tns_client = TNSClient()
         self.target: Target | None = None
