@@ -100,12 +100,6 @@ The project-local virtual environment can be run directly with:
 5. Adjust slit PA, slit dimensions, observatory, date/time, and contrast.
 6. Export the finding chart as PNG, JPG, or PDF.
 
-## First Test Targets
-
-- `2023ixf`
-- `2024ggi`
-- `2025wny`
-
 ## Observatory Presets
 
 - La Palma
