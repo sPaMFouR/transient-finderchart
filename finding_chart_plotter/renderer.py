@@ -38,7 +38,7 @@ TEXT_COLOR = 'xkcd:dark'
 CROSSHAIR_COLOR = 'xkcd:dark red'
 SLIT_COLOR = 'xkcd:tomato'
 INSET_SOURCE_BOX_ARCSEC = 30.0
-INSET_DISPLAY_LINEAR_SCALE = 3.0
+INSET_DISPLAY_LINEAR_SCALE = 2.0
 
 
 def apply_project_style() -> None:
@@ -337,7 +337,7 @@ def draw_metadata_box(ax, image: ImageData, target: Target, settings: ChartSetti
 def slit_instruction_text(settings: ChartSettings) -> str:
     slit_size = f"Slit {settings.slit_width_arcsec:.1f}\" x {settings.slit_length_arcsec:.1f}\""
     if not settings.show_slit:
-        return "Slit: off"
+        return "Slit PA: Parallactic Angle"
     return f"{slit_size}\n PA = {settings.slit_pa_deg:.1f} deg E of N"
 
 
@@ -487,6 +487,7 @@ def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
             "shrinkA": 0,
             "shrinkB": 4,
         },
+        bbox={"facecolor": "white", "alpha": 0.5, "edgecolor": "none", "pad": 1.5},
         annotation_clip=False,
         zorder=20,
         clip_on=False,
