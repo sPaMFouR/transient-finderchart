@@ -38,12 +38,12 @@ from .qt_compat import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from .catalog import CatalogSource, query_gaia_dr3
+from .catalog import CatalogSource, query_catalog_sources
 from .image_fetchers import available_bands, available_surveys, fetch_image
 from .mpl_compat import ensure_astropy_wcsaxes_compat
 from .models import ChartSettings, ImageData, ImageRequest, Target
 from .observatories import OBSERVATORIES, parallactic_angle_deg
-from .renderer import draw_chart, export_chart
+from .renderer import draw_chart, export_chart, pixel_scale_arcsec, world_to_scalar_pixel
 from .tns import TNSClient, TNSLookupError
 
 
@@ -75,6 +75,8 @@ class ChartCanvas(FigureCanvas):
         self.image: ImageData | None = None
         self.target: Target | None = None
         self.settings = ChartSettings()
+        self.source_selected_callback = None
+        self.mpl_connect("button_press_event", self._handle_catalog_click)
 
     def set_chart(self, image: ImageData, target: Target, settings: ChartSettings) -> None:
         self.image = image
@@ -100,6 +102,38 @@ class ChartCanvas(FigureCanvas):
                 ax.set_axis_off()
         self.draw_idle()
 
+    def _handle_catalog_click(self, event) -> None:
+        if event.button != 1 or self.image is None or self.target is None or event.inaxes is None:
+            return
+        source = self.nearest_catalog_source(event)
+        if source is not None and self.source_selected_callback is not None:
+            self.source_selected_callback(source)
+
+    def nearest_catalog_source(self, event) -> CatalogSource | None:
+        if event.xdata is None or event.ydata is None or self.image is None:
+            return None
+        sources = list(self.settings.catalog_sources)
+        if not sources:
+            return None
+        x_offset, y_offset = getattr(event.inaxes, "_finding_chart_pixel_offset", (0.0, 0.0))
+        click_x = float(event.xdata) + float(x_offset)
+        click_y = float(event.ydata) + float(y_offset)
+        try:
+            scale = pixel_scale_arcsec(self.image)
+        except Exception:
+            scale = 1.0
+        tolerance_pix = max(6.0, 2.5 / scale) if scale > 0 else 8.0
+        nearest: tuple[float, CatalogSource] | None = None
+        for source in sources:
+            coord = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
+            x, y = world_to_scalar_pixel(self.image, coord)
+            if not all(value == value for value in (x, y)):
+                continue
+            distance = ((x - click_x) ** 2 + (y - click_y) ** 2) ** 0.5
+            if distance <= tolerance_pix and (nearest is None or distance < nearest[0]):
+                nearest = (distance, source)
+        return nearest[1] if nearest is not None else None
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -110,10 +144,12 @@ class MainWindow(QMainWindow):
         self.target: Target | None = None
         self.image: ImageData | None = None
         self.catalog_sources: list[CatalogSource] = []
+        self.selected_catalog_source: CatalogSource | None = None
         self._thread: QThread | None = None
         self._worker: Worker | None = None
 
         self.canvas = ChartCanvas()
+        self.canvas.source_selected_callback = self.select_catalog_source
         self.status_label = QLabel("Ready")
         self._build_ui()
         self._sync_settings_from_controls()
@@ -328,8 +364,10 @@ class MainWindow(QMainWindow):
 
         catalog_box = QGroupBox("Catalog")
         catalog_layout = QVBoxLayout(catalog_box)
+        self.catalog_combo = QComboBox()
+        self.catalog_combo.addItems(["Gaia DR3", "Pan-STARRS DR2", "Gaia DR3 + Pan-STARRS DR2"])
         catalog_controls = QHBoxLayout()
-        self.catalog_button = QPushButton("Query Gaia DR3")
+        self.catalog_button = QPushButton("Query Catalog")
         self.catalog_button.clicked.connect(self.query_catalog)
         self.catalog_clear_button = QPushButton("Clear")
         self.catalog_clear_button.clicked.connect(self.clear_catalog)
@@ -338,7 +376,8 @@ class MainWindow(QMainWindow):
         self.catalog_text = QTextEdit()
         self.catalog_text.setReadOnly(True)
         self.catalog_text.setMaximumHeight(100)
-        self.catalog_text.setPlainText("Query Gaia DR3 to overlay field sources.")
+        self.catalog_text.setPlainText("Query a catalog to overlay field sources. Click an overlaid source to identify it.")
+        catalog_layout.addWidget(self.catalog_combo)
         catalog_layout.addLayout(catalog_controls)
         catalog_layout.addWidget(self.catalog_text)
         layout.addWidget(catalog_box)
@@ -477,6 +516,7 @@ class MainWindow(QMainWindow):
             observation_time=qdatetime_to_datetime(self.datetime_edit.dateTime()),
             observatory_name=self.observatory_combo.currentText(),
             catalog_sources=list(self.catalog_sources),
+            selected_catalog_source_label=self.selected_catalog_source.label if self.selected_catalog_source else "",
             auto_contrast=self.auto_contrast_check.isChecked(),
             vmin=self.vmin_spin.value(),
             vmax=self.vmax_spin.value(),
@@ -532,26 +572,37 @@ class MainWindow(QMainWindow):
             self.show_error("Search a target before querying catalogs.")
             return
         self.catalog_button.setEnabled(False)
+        catalog = self.catalog_combo.currentText()
         self._run_worker(
-            "Querying Gaia DR3...",
-            query_gaia_dr3,
+            f"Querying {catalog}...",
+            query_catalog_sources,
             self._catalog_loaded,
             self.target,
             self.size_spin.value() / 2.0,
+            catalog,
         )
 
     def _catalog_loaded(self, sources: list[CatalogSource]) -> None:
         self.catalog_button.setEnabled(True)
         self.catalog_sources = sources
+        self.selected_catalog_source = None
         preview = "\n".join(source.label for source in sources[:8])
         suffix = "" if len(sources) <= 8 else f"\n... {len(sources) - 8} more"
-        self.catalog_text.setPlainText(f"{len(sources)} Gaia DR3 sources returned.\n{preview}{suffix}")
-        self.status_label.setText(f"Loaded {len(sources)} Gaia DR3 catalog sources")
+        catalog = self.catalog_combo.currentText()
+        self.catalog_text.setPlainText(f"{len(sources)} {catalog} sources returned.\n{preview}{suffix}")
+        self.status_label.setText(f"Loaded {len(sources)} {catalog} sources")
         self.update_chart_from_controls()
 
     def clear_catalog(self) -> None:
         self.catalog_sources = []
+        self.selected_catalog_source = None
         self.catalog_text.setPlainText("Catalog overlay cleared.")
+        self.update_chart_from_controls()
+
+    def select_catalog_source(self, source: CatalogSource) -> None:
+        self.selected_catalog_source = source
+        self.catalog_text.setPlainText(source_detail_text(source, self.target))
+        self.status_label.setText(f"Selected {source.label}")
         self.update_chart_from_controls()
 
     def toggle_contrast_controls(self) -> None:
@@ -621,3 +672,21 @@ def target_coord_strings(target: Target) -> tuple[str, str]:
         coord.ra.to_string(unit=u.hour, sep=":", precision=2, pad=True),
         coord.dec.to_string(unit=u.deg, sep=":", precision=1, alwayssign=True, pad=True),
     )
+
+
+def source_detail_text(source: CatalogSource, target: Target | None = None) -> str:
+    coord = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
+    ra = coord.ra.to_string(unit=u.hour, sep=":", precision=3, pad=True)
+    dec = coord.dec.to_string(unit=u.deg, sep=":", precision=2, alwayssign=True, pad=True)
+    lines = [
+        source.label,
+        f"Catalog: {source.catalog}",
+        f"RA: {ra}",
+        f"Dec: {dec}",
+    ]
+    if source.magnitude is not None:
+        lines.append(f"Magnitude: {source.magnitude:.3f}")
+    if target is not None:
+        target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+        lines.append(f"Offset from target: {coord.separation(target_coord).arcsec:.2f} arcsec")
+    return "\n".join(lines)

@@ -28,7 +28,7 @@ PSF, overlays slit geometry, and exports annotated charts as PNG, JPG, or PDF.
 | Overlays | SN marker, label, optional slit, north/east compass, 1 arcmin ruler, 30 arcsec transient inset |
 | Slit | Off by default; 2 arcsec x 20 arcsec when enabled, adjustable width, length, and fixed PA east of north |
 | Parallactic angle | Computed from target, observatory, and date/time |
-| Catalog | Gaia DR3 source query and overlay |
+| Catalog | Gaia DR3 and Pan-STARRS DR2 source query, overlay, inset display, and click-to-identify selection |
 | Export | PNG, JPG, PDF |
 
 ## Image Archives
@@ -78,6 +78,14 @@ or:
 python3 -m finding_chart_plotter
 ```
 
+The development web interface can be launched with:
+
+```bash
+python3 -m finding_chart_plotter.web --host 127.0.0.1 --port 8765
+```
+
+Then open `http://127.0.0.1:8765` and render charts from the browser.
+
 If you are inside a conda environment that already has PyQt6 installed and
 PySide6 fails with a Qt symbol error, run with the PyQt6 compatibility path:
 
@@ -96,9 +104,10 @@ The project-local virtual environment can be run directly with:
 1. Search a target by TNS/IAU/ZTF name, or enter custom RA/Dec.
 2. Select an archive, image mode, band, cutout size, and pixel scale.
 3. Load the image cutout.
-4. Optionally query Gaia DR3 for field-star overlays and PSF flux scaling.
+4. Optionally query Gaia DR3 or Pan-STARRS DR2 for field-star overlays and PSF flux scaling.
 5. Adjust slit PA, slit dimensions, observatory, date/time, and contrast.
-6. Export the finding chart as PNG, JPG, or PDF.
+6. Click a catalog marker in the chart or inset to identify the source.
+7. Export the finding chart as PNG, JPG, or PDF.
 
 ## Observatory Presets
 
@@ -116,7 +125,8 @@ The project-local virtual environment can be run directly with:
 - The PA convention is degrees east of north.
 - The injected PSF is intended for visual finding-chart use, not calibrated photometry.
 - Manual contrast controls override the automatic percentile/asinh stretch.
-- Gaia DR3 overlays are implemented. Pan-STARRS/Legacy Tractor catalog overlays are future work.
+- Gaia DR3 and Pan-STARRS DR2 overlays are implemented. Legacy Tractor catalog overlays are future work.
+- The web interface is a development endpoint that reuses the Python renderer and writes generated PNGs to `web_exports/`.
 - Legacy Survey FITS server errors fall back to a JPEG cutout with approximate centered TAN WCS when possible.
 - Full worker tracebacks are printed to stderr; the GUI shows compact user-facing error messages.
 
