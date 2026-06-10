@@ -37,6 +37,8 @@ SCIENCE_FONT_FAMILY = "sans-serif"
 TEXT_COLOR = 'xkcd:dark'
 CROSSHAIR_COLOR = 'xkcd:dark red'
 SLIT_COLOR = 'xkcd:tomato'
+INSET_SOURCE_BOX_ARCSEC = 30.0
+INSET_DISPLAY_LINEAR_SCALE = 3.0
 
 
 def apply_project_style() -> None:
@@ -88,6 +90,10 @@ def scalar_pixel(value) -> float:
 def world_to_scalar_pixel(image: ImageData, coord: SkyCoord) -> tuple[float, float]:
     x, y = image.wcs.world_to_pixel(coord)
     return scalar_pixel(x), scalar_pixel(y)
+
+
+def image_display_extent(nx: int, ny: int) -> tuple[float, float, float, float]:
+    return -0.5, nx - 0.5, -0.5, ny - 0.5
 
 
 def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSettings) -> np.ndarray:
@@ -223,17 +229,18 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
     original = np.asarray(image.data, dtype=float)
     data = image_with_injected_psf(image, target, settings)
     ny, nx = data.shape[:2]
+    extent = image_display_extent(nx, ny)
     if data.ndim == 3:
         if not settings.auto_contrast and settings.vmax is not None and settings.vmin is not None and settings.vmax > settings.vmin:
             data = np.clip((data - settings.vmin) / (settings.vmax - settings.vmin), 0, 1)
         norm = None
-        ax.imshow(np.clip(data, 0, 1), origin="lower")
+        ax.imshow(np.clip(data, 0, 1), origin="lower", extent=extent)
     else:
         vmin, vmax = contrast_limits(original, settings)
         norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=AsinhStretch())
-        ax.imshow(data, origin="lower", cmap="gray_r", norm=norm)
-    ax.set_xlim(-0.5, nx - 0.5)
-    ax.set_ylim(-0.5, ny - 0.5)
+        ax.imshow(data, origin="lower", cmap="gray_r", norm=norm, extent=extent)
+    ax.set_xlim(extent[0], extent[1])
+    ax.set_ylim(extent[2], extent[3])
     ax.set_aspect("equal", adjustable="box")
     ax.coords.grid(color="white", alpha=0.18, linestyle=":", linewidth=0.7)
     ax.coords[0].set_axislabel("RA", fontsize=12)
@@ -338,8 +345,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     scale = pixel_scale_arcsec(image)
     if not np.isfinite(scale) or scale <= 0:
         return
-    total_arcsec = 30.0
-    half_size_pix = max(5, int(round((total_arcsec / 2.0) / scale)))
+    half_size_pix = max(5, int(round((INSET_SOURCE_BOX_ARCSEC / 2.0) / scale)))
     x0, y0 = world_to_scalar_pixel(image, SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg))
     if not np.isfinite(x0) or not np.isfinite(y0):
         return
@@ -354,13 +360,19 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
         return
     ax.add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor="white", linewidth=0.5, alpha=0.85))
     
-    inset_width, inset_height = inset_axes_size_percent(nx, ny, x2 - x1, y2 - y1)
+    nominal_box_size = 2 * half_size_pix + 1
+    inset_width, inset_height = inset_axes_size_percent(nx, ny, nominal_box_size, nominal_box_size)
     inset = inset_axes(ax, width=f"{inset_width:.2f}%", height=f"{inset_height:.2f}%", loc="upper right", borderpad=1.1)
     stamp = data[y1:y2, x1:x2]
+    stamp_ny, stamp_nx = stamp.shape[:2]
+    stamp_extent = image_display_extent(stamp_nx, stamp_ny)
     if data.ndim == 3:
-        inset.imshow(np.clip(stamp, 0, 1), origin="lower")
+        inset.imshow(np.clip(stamp, 0, 1), origin="lower", extent=stamp_extent)
     else:
-        inset.imshow(stamp, origin="lower", cmap="gray_r", norm=norm)
+        inset.imshow(stamp, origin="lower", cmap="gray_r", norm=norm, extent=stamp_extent)
+    inset.set_xlim(stamp_extent[0], stamp_extent[1])
+    inset.set_ylim(stamp_extent[2], stamp_extent[3])
+    inset.set_aspect("equal", adjustable="box")
     inset.set_xticks([])
     inset.set_yticks([])
     for spine in inset.spines.values():
@@ -398,11 +410,10 @@ def connect_inset_to_source_box(ax, inset, x1: int, x2: int, y1: int, y2: int) -
 
 
 def inset_axes_size_percent(nx: int, ny: int, box_width: int, box_height: int) -> tuple[float, float]:
-    zoom_linear_scale = math.sqrt(2.5)
-    width_percent = 100.0 * zoom_linear_scale * max(box_width, 1) / max(nx, 1)
-    height_percent = 100.0 * zoom_linear_scale * max(box_height, 1) / max(ny, 1)
-    width_percent = min(max(width_percent, 5.0), 45.0)
-    height_percent = min(max(height_percent, 5.0), 45.0)
+    width_percent = 100.0 * INSET_DISPLAY_LINEAR_SCALE * max(box_width, 1) / max(nx, 1)
+    height_percent = 100.0 * INSET_DISPLAY_LINEAR_SCALE * max(box_height, 1) / max(ny, 1)
+    width_percent = min(max(width_percent, 5.0), 55.0)
+    height_percent = min(max(height_percent, 5.0), 55.0)
     return width_percent, height_percent
 
 
