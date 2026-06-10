@@ -247,6 +247,7 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
     ax.coords[1].set_axislabel("Dec", fontsize=12)
     ax.coords[0].set_ticklabel(size=9)
     ax.coords[1].set_ticklabel(size=9)
+    ax._finding_chart_pixel_offset = (0.0, 0.0)
 
     target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
     x, y = world_to_scalar_pixel(image, target_coord)
@@ -378,9 +379,11 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     for spine in inset.spines.values():
         spine.set_edgecolor("white")
         spine.set_linewidth(0.6)
+    inset._finding_chart_pixel_offset = (float(x1), float(y1))
     connect_inset_to_source_box(ax, inset, x1, x2, y1, y2)
     if settings.show_slit:
         draw_inset_slit(inset, image, target, settings, x1, y1)
+    draw_catalog_sources_inset(inset, image, target, settings, x1, y1, stamp.shape[:2])
     local_x = x0 - x1
     local_y = y0 - y1
     draw_inset_marker(inset, image, target, settings, scale, local_x, local_y)
@@ -600,7 +603,81 @@ def draw_catalog_sources(ax, image: ImageData, target: Target, settings: ChartSe
         x, y = world_to_scalar_pixel(image, coord)
         if not np.isfinite(x) or not np.isfinite(y):
             continue
-        ax.plot(x, y, marker="o", ms=5, mec="darkorange", mfc="none", mew=1.0, alpha=0.9)
+        draw_catalog_marker(ax, x, y, source, settings)
+
+
+def draw_catalog_sources_inset(
+    inset,
+    image: ImageData,
+    target: Target,
+    settings: ChartSettings,
+    x_offset: int,
+    y_offset: int,
+    shape: tuple[int, int],
+) -> None:
+    if not settings.catalog_sources:
+        return
+    ny, nx = shape
+    target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+    for source in settings.catalog_sources:
+        coord = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
+        if coord.separation(target_coord).arcsec < 0.5:
+            continue
+        x, y = world_to_scalar_pixel(image, coord)
+        if not np.isfinite(x) or not np.isfinite(y):
+            continue
+        local_x = x - x_offset
+        local_y = y - y_offset
+        if local_x < -0.5 or local_x > nx - 0.5 or local_y < -0.5 or local_y > ny - 0.5:
+            continue
+        draw_catalog_marker(inset, local_x, local_y, source, settings, markersize=5.5, linewidth=0.9)
+
+
+def draw_catalog_marker(ax, x: float, y: float, source, settings: ChartSettings, markersize: float = 5.0, linewidth: float = 1.0) -> None:
+    selected = getattr(source, "label", "") == settings.selected_catalog_source_label
+    edge_color = catalog_source_color(source)
+    ax.plot(
+        x,
+        y,
+        marker="o",
+        ms=markersize + (3.0 if selected else 0.0),
+        mec="yellow" if selected else edge_color,
+        mfc="none",
+        mew=linewidth + (0.6 if selected else 0.0),
+        alpha=1.0 if selected else 0.9,
+        zorder=30 if selected else 8,
+        clip_on=True,
+    )
+    if selected:
+        ax.annotate(
+            catalog_short_label(source),
+            xy=(x, y),
+            xytext=(5, 5),
+            textcoords="offset points",
+            color="yellow",
+            fontsize=7,
+            ha="left",
+            va="bottom",
+            zorder=31,
+            clip_on=True,
+        )
+
+
+def catalog_source_color(source) -> str:
+    catalog = getattr(source, "catalog", "")
+    if "Pan-STARRS" in catalog:
+        return "deepskyblue"
+    return "darkorange"
+
+
+def catalog_short_label(source) -> str:
+    catalog = getattr(source, "catalog", "")
+    source_id = getattr(source, "source_id", "")
+    if "Pan-STARRS" in catalog:
+        return f"PS1 {source_id}" if source_id else "PS1"
+    if source_id:
+        return f"Gaia {source_id}"
+    return getattr(source, "label", "catalog source")
 
 
 def export_chart(path: Path, image: ImageData, target: Target, settings: ChartSettings, dpi: int = 180) -> None:

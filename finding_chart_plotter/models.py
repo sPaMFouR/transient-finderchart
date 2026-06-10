@@ -66,6 +66,7 @@ class ChartSettings:
     observation_time: datetime | None = None
     observatory_name: str = "La Palma"
     catalog_sources: list[object] = field(default_factory=list)
+    selected_catalog_source_label: str = ""
     auto_contrast: bool = True
     vmin: float | None = None
     vmax: float | None = None
