@@ -3,46 +3,22 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 [![Qt GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20PyQt6-green.svg)](finding_chart_plotter/qt_compat.py)
 [![Astropy](https://img.shields.io/badge/astro-Astropy-purple.svg)](https://www.astropy.org/)
+[![Tests](https://img.shields.io/badge/tests-7%20passed-brightgreen.svg)](tests)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](docs/IMPLEMENTATION_LOG.md)
 
-TransientFinderchart is a desktop GUI for making observation-ready finding
-charts for supernovae and other transients. It resolves targets from TNS or
-manual coordinates, downloads archival image cutouts, injects a visual transient
-PSF, overlays slit geometry, and exports annotated charts as PNG, JPG, or PDF.
+Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts.
 
 ![Template finding chart](docs/assets/SN2023ixf_finding_chart.png)
 
 ## Features
 
-| Area | Options |
-| --- | --- |
-| Target input | TNS/IAU name, ZTF/internal name through TNS, or custom RA/Dec |
-| Archives | Pan-STARRS, Legacy Survey, DSS2, 2MASS |
-| Image modes | Single band by default, color composite where supported |
-| Bands | Survey-specific band dropdowns |
-| Field size | Default 3 arcmin x 3 arcmin, user adjustable |
-| Contrast | Automatic percentile/asinh stretch, or manual `vmin`/`vmax` |
-| Transient injection | Empirical field-star PSF at the transient WCS position, with Moffat fallback |
-| Flux scaling | Gaia field-star scaling when catalog sources are loaded, otherwise image-statistics fallback |
-| Overlays | SN marker, label, optional slit, north/east compass, 1 arcmin ruler, 30 arcsec transient inset |
-| Slit | Off by default; 2 arcsec x 20 arcsec when enabled, adjustable width, length, and fixed PA east of north |
-| Parallactic angle | Computed from target, observatory, and date/time |
-| Catalog | Gaia DR3 and Pan-STARRS DR2 source query, overlay, inset display, and click-to-identify selection |
-| Export | PNG, JPG, PDF |
-
-## Image Archives
-
-| Survey | Bands / Modes | Notes |
-| --- | --- | --- |
-| Pan-STARRS | `g r i z y`, color composite | Northern sky coverage, fetched from STScI PS1 services |
-| Legacy Survey | `g r i z`, color composite | FITS cutout first; JPEG fallback with approximate TAN WCS if the FITS service returns HTTP 500 |
-| DSS2 | `red blue ir` | Fetched through SkyView |
-| 2MASS | `J H K` | Fetched through SkyView |
-
-Additional southern/NIR surveys that would be useful future additions include
-VISTA/VHS, VIKING, SkyMapper, DECaLS/NOIRLab services beyond the current Legacy
-Survey endpoint, and DES cutouts where a stable public FITS service is available.
+- Archives: Pan-STARRS, Legacy Survey, DSS2, 2MASS.
+- Bands/modes: survey-specific single-band and color-composite options.
+- Chart overlays: SN marker, 30 arcsec inset, slit, compass, 1 arcmin ruler.
+- Injected SN: empirical field-star PSF with Moffat fallback.
+- Catalogs: Gaia DR3 and Pan-STARRS DR2 overlays with brightness cut and inset markers.
+- Blind offsets: selected catalog stars report delta RA, delta Dec, PA east of north, magnitude, and Gaia parallax/proper motion when available.
+- Export: PNG, JPG, PDF.
 
 ## Install
 
@@ -50,20 +26,12 @@ Survey endpoint, and DES cutouts where a stable public FITS service is available
 python3 -m pip install -r requirements.txt
 ```
 
-For development:
+For editable development:
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip setuptools wheel
 .venv/bin/python -m pip install -e .
-```
-
-TNS credentials should be kept out of git:
-
-```bash
-export TNS_API_KEY="..."
-export TNS_BOT_ID="..."
-export TNS_BOT_NAME="..."
 ```
 
 ## Run
@@ -78,64 +46,46 @@ or:
 python3 -m finding_chart_plotter
 ```
 
-The development web interface can be launched with:
+Development web interface:
 
 ```bash
 python3 -m finding_chart_plotter.web --host 127.0.0.1 --port 8765
 ```
 
-Then open `http://127.0.0.1:8765` and render charts from the browser.
+Open `http://127.0.0.1:8765`.
 
-If you are inside a conda environment that already has PyQt6 installed and
-PySide6 fails with a Qt symbol error, run with the PyQt6 compatibility path:
+If PySide6 fails in a conda environment with PyQt6 already installed:
 
 ```bash
 FINDING_CHART_QT_API=pyqt6 python run_finding_chart.py
 ```
 
-The project-local virtual environment can be run directly with:
+## Workflow
+
+1. Search TNS/IAU/ZTF name or enter custom RA/Dec.
+2. Select archive, mode, band, field size, and pixel scale.
+3. Load the image.
+4. Optionally query Gaia DR3 or Pan-STARRS DR2 with a brightness cut.
+5. Click a catalog marker in the main chart or inset for blind-offset details.
+6. Adjust slit, overlays, injected SN, observatory/time, and contrast.
+7. Export the chart.
+
+## TNS Credentials
+
+TNS credentials are not saved in this repository. `finding_chart_plotter/tns.py` reads them from environment variables when present:
 
 ```bash
-.venv/bin/python run_finding_chart.py
+export TNS_API_KEY="..."
+export TNS_BOT_ID="..."
+export TNS_BOT_NAME="..."
 ```
 
-## Basic Workflow
-
-1. Search a target by TNS/IAU/ZTF name, or enter custom RA/Dec.
-2. Select an archive, image mode, band, cutout size, and pixel scale.
-3. Load the image cutout.
-4. Optionally query Gaia DR3 or Pan-STARRS DR2 for field-star overlays and PSF flux scaling.
-5. Adjust slit PA, slit dimensions, observatory, date/time, and contrast.
-6. Click a catalog marker in the chart or inset to identify the source.
-7. Export the finding chart as PNG, JPG, or PDF.
-
-## Observatory Presets
-
-- La Palma
-- Mauna Kea, Hawaii
-- Paranal, Chile
-- Palomar Observatory
-- La Silla, Chile
-- HCT / IAO, India
-- Kanata, Hiroshima
+Without these variables, the app falls back to public TNS search where possible.
 
 ## Notes
 
-- The date/time control defaults to the current date and time at launch.
-- The PA convention is degrees east of north.
-- The injected PSF is intended for visual finding-chart use, not calibrated photometry.
-- Manual contrast controls override the automatic percentile/asinh stretch.
-- Gaia DR3 and Pan-STARRS DR2 overlays are implemented. Legacy Tractor catalog overlays are future work.
-- The web interface is a development endpoint that reuses the Python renderer and writes generated PNGs to `web_exports/`.
-- Legacy Survey FITS server errors fall back to a JPEG cutout with approximate centered TAN WCS when possible.
-- Full worker tracebacks are printed to stderr; the GUI shows compact user-facing error messages.
-
-## Acknowledgments
-
-The in-plot metadata box and transient inset were inspired by Sean Brennan's
-[`Astro-Sean/finder_chart`](https://github.com/Astro-Sean/finder_chart), a
-simple Astropy-based finder-chart script for transient identification.
-
-## Development Log
-
-See [docs/IMPLEMENTATION_LOG.md](docs/IMPLEMENTATION_LOG.md).
+- PA convention is degrees east of north.
+- Injected PSF is for visual finding-chart use, not calibrated photometry.
+- The web interface reuses the Python renderer and writes generated PNGs to `web_exports/`.
+- Legacy Survey FITS failures fall back to a JPEG cutout with approximate centered TAN WCS when possible.
+- See [docs/IMPLEMENTATION_LOG.md](docs/IMPLEMENTATION_LOG.md) for development history.
