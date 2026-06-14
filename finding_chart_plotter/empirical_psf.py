@@ -255,7 +255,7 @@ def shift_psf_to_subpixel(psf: np.ndarray, dx: float, dy: float) -> np.ndarray:
 
 def inject_psf(data: np.ndarray, psf: np.ndarray, x: float, y: float, flux: float) -> np.ndarray:
     if flux <= 0:
-        raise ValueError("fake source flux must be positive")
+        raise ValueError("Source flux must be positive")
     out = np.array(data, dtype=float, copy=True)
     size = psf.shape[0]
     half = size // 2
@@ -271,7 +271,7 @@ def inject_psf(data: np.ndarray, psf: np.ndarray, x: float, y: float, flux: floa
     img_x0 = max(x0, 0)
     img_x1 = min(x1, out.shape[1])
     if img_y0 >= img_y1 or img_x0 >= img_x1:
-        raise ValueError("fake source position lies outside the image")
+        raise ValueError("Source position lies outside the image")
     ker_y0 = img_y0 - y0
     ker_y1 = ker_y0 + (img_y1 - img_y0)
     ker_x0 = img_x0 - x0
