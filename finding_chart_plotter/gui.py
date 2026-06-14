@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 import astropy.units as u
+import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.time import Time
 from .qt_compat import (
@@ -251,8 +252,27 @@ class MainWindow(QMainWindow):
         contrast_form.addRow(self.reset_contrast_button)
         layout.addWidget(contrast_box)
 
+        layout.addWidget(self._build_injected_source_box())
         layout.addStretch(1)
         return page
+
+    def _build_injected_source_box(self) -> QGroupBox:
+        source_box = QGroupBox("Injected SN")
+        source_form = QFormLayout(source_box)
+        self.inject_check = QCheckBox("Show empirical PSF")
+        self.inject_check.setChecked(True)
+        self.brightness_spin = QDoubleSpinBox()
+        self.brightness_spin.setRange(0.0, 10.0)
+        self.brightness_spin.setValue(5.0)
+        self.brightness_spin.setDecimals(1)
+        self.fwhm_spin = QDoubleSpinBox()
+        self.fwhm_spin.setRange(0.1, 10.0)
+        self.fwhm_spin.setValue(1.0)
+        self.fwhm_spin.setSuffix(" arcsec")
+        source_form.addRow(self.inject_check)
+        source_form.addRow("Brightness", self.brightness_spin)
+        source_form.addRow("FWHM", self.fwhm_spin)
+        return source_box
 
     def _build_image_tab(self) -> QWidget:
         page = QWidget()
@@ -335,23 +355,6 @@ class MainWindow(QMainWindow):
         slit_form.addRow(rotate_layout)
         layout.addWidget(slit_box)
 
-        source_box = QGroupBox("Injected SN")
-        source_form = QFormLayout(source_box)
-        self.inject_check = QCheckBox("Show empirical PSF")
-        self.inject_check.setChecked(True)
-        self.brightness_spin = QDoubleSpinBox()
-        self.brightness_spin.setRange(0.0, 10.0)
-        self.brightness_spin.setValue(5.0)
-        self.brightness_spin.setDecimals(1)
-        self.fwhm_spin = QDoubleSpinBox()
-        self.fwhm_spin.setRange(0.1, 10.0)
-        self.fwhm_spin.setValue(1.0)
-        self.fwhm_spin.setSuffix(" arcsec")
-        source_form.addRow(self.inject_check)
-        source_form.addRow("Brightness", self.brightness_spin)
-        source_form.addRow("FWHM", self.fwhm_spin)
-        layout.addWidget(source_box)
-
         overlay_box = QGroupBox("Overlays")
         grid = QGridLayout(overlay_box)
         self.crosshair_check = QCheckBox("Crosshair/label")
@@ -366,6 +369,20 @@ class MainWindow(QMainWindow):
         catalog_layout = QVBoxLayout(catalog_box)
         self.catalog_combo = QComboBox()
         self.catalog_combo.addItems(["Gaia DR3", "Pan-STARRS DR2", "Gaia DR3 + Pan-STARRS DR2"])
+        catalog_cut_form = QFormLayout()
+        self.catalog_mag_cut_check = QCheckBox("Apply brightness cut")
+        self.catalog_mag_cut_check.setChecked(True)
+        self.catalog_mag_cut_spin = QDoubleSpinBox()
+        self.catalog_mag_cut_spin.setRange(5.0, 25.0)
+        self.catalog_mag_cut_spin.setDecimals(2)
+        self.catalog_mag_cut_spin.setValue(21.0)
+        self.catalog_mag_cut_spin.setSuffix(" mag")
+        self.catalog_mag_cut_spin.setEnabled(self.catalog_mag_cut_check.isChecked())
+        self.catalog_mag_cut_check.stateChanged.connect(
+            lambda: self.catalog_mag_cut_spin.setEnabled(self.catalog_mag_cut_check.isChecked())
+        )
+        catalog_cut_form.addRow(self.catalog_mag_cut_check)
+        catalog_cut_form.addRow("Max magnitude", self.catalog_mag_cut_spin)
         catalog_controls = QHBoxLayout()
         self.catalog_button = QPushButton("Query Catalog")
         self.catalog_button.clicked.connect(self.query_catalog)
@@ -378,6 +395,7 @@ class MainWindow(QMainWindow):
         self.catalog_text.setMaximumHeight(100)
         self.catalog_text.setPlainText("Query a catalog to overlay field sources. Click an overlaid source to identify it.")
         catalog_layout.addWidget(self.catalog_combo)
+        catalog_layout.addLayout(catalog_cut_form)
         catalog_layout.addLayout(catalog_controls)
         catalog_layout.addWidget(self.catalog_text)
         layout.addWidget(catalog_box)
@@ -573,6 +591,7 @@ class MainWindow(QMainWindow):
             return
         self.catalog_button.setEnabled(False)
         catalog = self.catalog_combo.currentText()
+        max_magnitude = self.catalog_mag_cut_spin.value() if self.catalog_mag_cut_check.isChecked() else None
         self._run_worker(
             f"Querying {catalog}...",
             query_catalog_sources,
@@ -580,6 +599,8 @@ class MainWindow(QMainWindow):
             self.target,
             self.size_spin.value() / 2.0,
             catalog,
+            200,
+            max_magnitude,
         )
 
     def _catalog_loaded(self, sources: list[CatalogSource]) -> None:
@@ -685,8 +706,25 @@ def source_detail_text(source: CatalogSource, target: Target | None = None) -> s
         f"Dec: {dec}",
     ]
     if source.magnitude is not None:
-        lines.append(f"Magnitude: {source.magnitude:.3f}")
+        band = f" {source.magnitude_band}" if source.magnitude_band else ""
+        lines.append(f"Magnitude{band}: {source.magnitude:.3f}")
+    lines.append(f"Parallax: {format_optional(source.parallax_mas, ' mas')}")
+    lines.append(f"PM RA: {format_optional(source.pmra_mas_per_year, ' mas/yr')}")
+    lines.append(f"PM Dec: {format_optional(source.pmdec_mas_per_year, ' mas/yr')}")
     if target is not None:
         target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+        delta_ra, delta_dec = target_coord.spherical_offsets_to(coord)
+        delta_ra_arcsec = delta_ra.to_value(u.arcsec)
+        delta_dec_arcsec = delta_dec.to_value(u.arcsec)
+        pa_e_of_n = (u.Quantity(np.degrees(np.arctan2(delta_ra_arcsec, delta_dec_arcsec)), u.deg).to_value(u.deg) + 360.0) % 360.0
+        lines.append(f"Delta_RA: {delta_ra_arcsec:+.2f} arcsec")
+        lines.append(f"Delta_Dec: {delta_dec_arcsec:+.2f} arcsec")
+        lines.append(f"PA E of N: {pa_e_of_n:.2f} deg")
         lines.append(f"Offset from target: {coord.separation(target_coord).arcsec:.2f} arcsec")
     return "\n".join(lines)
+
+
+def format_optional(value: float | None, suffix: str) -> str:
+    if value is None:
+        return "not available"
+    return f"{value:.3f}{suffix}"

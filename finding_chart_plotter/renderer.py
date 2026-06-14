@@ -641,7 +641,7 @@ def draw_catalog_marker(ax, x: float, y: float, source, settings: ChartSettings,
         y,
         marker="o",
         ms=markersize + (3.0 if selected else 0.0),
-        mec="yellow" if selected else edge_color,
+        mec="royalblue" if selected else edge_color,
         mfc="none",
         mew=linewidth + (0.6 if selected else 0.0),
         alpha=1.0 if selected else 0.9,
@@ -654,20 +654,21 @@ def draw_catalog_marker(ax, x: float, y: float, source, settings: ChartSettings,
             xy=(x, y),
             xytext=(5, 5),
             textcoords="offset points",
-            color="yellow",
+            color="royalblue",
             fontsize=7,
             ha="left",
             va="bottom",
             zorder=31,
             clip_on=True,
+            bbox={"facecolor": "white", "alpha": 0.5, "edgecolor": "none", "pad": 1.5},
         )
 
 
 def catalog_source_color(source) -> str:
     catalog = getattr(source, "catalog", "")
     if "Pan-STARRS" in catalog:
-        return "deepskyblue"
-    return "darkorange"
+        return "dimgray"
+    return "white"
 
 
 def catalog_short_label(source) -> str:

@@ -15,20 +15,28 @@ class CatalogSource:
     dec_deg: float
     label: str
     magnitude: float | None = None
+    magnitude_band: str = ""
     catalog: str = "Gaia DR3"
     source_id: str = ""
+    parallax_mas: float | None = None
+    pmra_mas_per_year: float | None = None
+    pmdec_mas_per_year: float | None = None
 
 
-def query_gaia_dr3(target: Target, radius_arcmin: float, limit: int = 200) -> list[CatalogSource]:
+def query_gaia_dr3(target: Target, radius_arcmin: float, limit: int = 200, max_magnitude: float | None = None) -> list[CatalogSource]:
     radius_deg = radius_arcmin / 60.0
+    magnitude_filter = ""
+    if max_magnitude is not None:
+        magnitude_filter = f"AND phot_g_mean_mag <= {float(max_magnitude):.3f}"
     adql = f"""
     SELECT TOP {int(limit)}
-        source_id, ra, dec, phot_g_mean_mag
+        source_id, ra, dec, phot_g_mean_mag, parallax, pmra, pmdec
     FROM gaiadr3.gaia_source
     WHERE 1 = CONTAINS(
         POINT('ICRS', ra, dec),
         CIRCLE('ICRS', {target.ra_deg:.9f}, {target.dec_deg:.9f}, {radius_deg:.9f})
     )
+    {magnitude_filter}
     ORDER BY phot_g_mean_mag ASC
     """
     response = requests.post(
@@ -48,30 +56,33 @@ def query_gaia_dr3(target: Target, radius_arcmin: float, limit: int = 200) -> li
         mag_text = (row.get("phot_g_mean_mag") or "").strip()
         mag = float(mag_text) if mag_text else None
         label = f"Gaia {row['source_id']}"
-        if mag is not None:
-            label += f"  G={mag:.2f}"
         sources.append(
             CatalogSource(
                 ra_deg=float(row["ra"]),
                 dec_deg=float(row["dec"]),
                 label=label,
                 magnitude=mag,
+                magnitude_band="G",
                 catalog="Gaia DR3",
                 source_id=row["source_id"],
+                parallax_mas=parse_optional_float(row.get("parallax")),
+                pmra_mas_per_year=parse_optional_float(row.get("pmra")),
+                pmdec_mas_per_year=parse_optional_float(row.get("pmdec")),
             )
         )
     return sources
 
 
-def query_panstarrs_dr2(target: Target, radius_arcmin: float, limit: int = 200) -> list[CatalogSource]:
+def query_panstarrs_dr2(target: Target, radius_arcmin: float, limit: int = 200, max_magnitude: float | None = None) -> list[CatalogSource]:
     radius_deg = radius_arcmin / 60.0
+    max_r_mag = 40.0 if max_magnitude is None else float(max_magnitude)
     params = {
         "ra": f"{target.ra_deg:.9f}",
         "dec": f"{target.dec_deg:.9f}",
         "radius": f"{radius_deg:.9f}",
         "nDetections.gte": "2",
         "rMeanPSFMag.gt": "0",
-        "rMeanPSFMag.lt": "40",
+        "rMeanPSFMag.lt": f"{max_r_mag:.3f}",
         "pagesize": str(max(int(limit) * 5, int(limit))),
         "sort_by": "rMeanPSFMag",
         "columns": "[objID,raMean,decMean,gMeanPSFMag,rMeanPSFMag,iMeanPSFMag,zMeanPSFMag,yMeanPSFMag]",
@@ -105,14 +116,13 @@ def parse_panstarrs_dr2_csv(text: str) -> list[CatalogSource]:
         mag, band = _best_ps1_magnitude(row)
         obj_id = _first_present(row, "objID", "objid", "id") or ""
         label = f"PS1 {obj_id}" if obj_id else "PS1 source"
-        if mag is not None:
-            label += f"  {band}={mag:.2f}"
         sources.append(
             CatalogSource(
                 ra_deg=float(ra_text),
                 dec_deg=float(dec_text),
                 label=label,
                 magnitude=mag,
+                magnitude_band=band if mag is not None else "",
                 catalog="Pan-STARRS DR2",
                 source_id=obj_id,
             )
@@ -120,16 +130,32 @@ def parse_panstarrs_dr2_csv(text: str) -> list[CatalogSource]:
     return sources
 
 
-def query_catalog_sources(target: Target, radius_arcmin: float, catalog: str, limit: int = 200) -> list[CatalogSource]:
+def query_catalog_sources(
+    target: Target,
+    radius_arcmin: float,
+    catalog: str,
+    limit: int = 200,
+    max_magnitude: float | None = None,
+) -> list[CatalogSource]:
     if catalog == "Gaia DR3":
-        return query_gaia_dr3(target, radius_arcmin, limit=limit)
+        return query_gaia_dr3(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
     if catalog == "Pan-STARRS DR2":
-        return query_panstarrs_dr2(target, radius_arcmin, limit=limit)
+        return query_panstarrs_dr2(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
     if catalog == "Gaia DR3 + Pan-STARRS DR2":
-        gaia_sources = query_gaia_dr3(target, radius_arcmin, limit=limit)
-        ps1_sources = query_panstarrs_dr2(target, radius_arcmin, limit=limit)
+        gaia_sources = query_gaia_dr3(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
+        ps1_sources = query_panstarrs_dr2(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
         return (gaia_sources + ps1_sources)[: 2 * limit]
     raise ValueError(f"Unsupported catalog: {catalog}")
+
+
+def parse_optional_float(value: str | None) -> float | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
 
 def _best_ps1_magnitude(row: dict[str, str]) -> tuple[float | None, str]:
