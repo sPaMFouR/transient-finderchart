@@ -54,6 +54,15 @@ python3 -m finding_chart_plotter.web --host 127.0.0.1 --port 8765
 
 Open `http://127.0.0.1:8765`.
 
+Native macOS SwiftUI interface:
+
+```bash
+cd FindingChartMacApp
+swift run FindingChartMacApp
+```
+
+Set `FINDING_CHART_PYTHON` to a virtualenv/conda Python with the package dependencies when needed.
+
 If PySide6 fails in a conda environment with PyQt6 already installed:
 
 ```bash

@@ -1,0 +1,28 @@
+name: FindingChartMacApp
+options:
+  bundleIdPrefix: org.transientfinderchart
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    ENABLE_HARDENED_RUNTIME: YES
+targets:
+  FindingChartMacApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/FindingChartMacApp
+    info:
+      path: Sources/FindingChartMacApp/Info.plist
+      properties:
+        CFBundleName: FindingChartMacApp
+        CFBundleDisplayName: Transient Finderchart
+        LSMinimumSystemVersion: "14.0"
+        NSHumanReadableCopyright: "TransientFinderchart"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.transientfinderchart.FindingChartMacApp
+        CODE_SIGN_ENTITLEMENTS: ""
