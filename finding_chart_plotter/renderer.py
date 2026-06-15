@@ -37,7 +37,7 @@ SCIENCE_FONT_FAMILY = "sans-serif"
 TEXT_COLOR = 'xkcd:dark'
 CROSSHAIR_COLOR = 'xkcd:dark red'
 SLIT_COLOR = 'xkcd:tomato'
-INSET_SOURCE_BOX_ARCSEC = 30.0
+INSET_SOURCE_BOX_FOV_FRACTION = 1.0 / 6.0
 INSET_DISPLAY_LINEAR_SCALE = 2.0
 
 
@@ -81,6 +81,15 @@ apply_project_style()
 def pixel_scale_arcsec(image: ImageData) -> float:
     scales = proj_plane_pixel_scales(image.wcs) * 3600.0
     return float(np.nanmean(np.abs(scales)))
+
+
+def image_fov_arcsec(image: ImageData) -> float:
+    ny, nx = image.data.shape[:2]
+    return min(nx, ny) * pixel_scale_arcsec(image)
+
+
+def inset_source_box_arcsec(image: ImageData) -> float:
+    return image_fov_arcsec(image) * INSET_SOURCE_BOX_FOV_FRACTION
 
 
 def scalar_pixel(value) -> float:
@@ -346,7 +355,10 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     scale = pixel_scale_arcsec(image)
     if not np.isfinite(scale) or scale <= 0:
         return
-    half_size_pix = max(5, int(round((INSET_SOURCE_BOX_ARCSEC / 2.0) / scale)))
+    source_box_arcsec = inset_source_box_arcsec(image)
+    if not np.isfinite(source_box_arcsec) or source_box_arcsec <= 0:
+        return
+    half_size_pix = max(5, int(round((source_box_arcsec / 2.0) / scale)))
     x0, y0 = world_to_scalar_pixel(image, SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg))
     if not np.isfinite(x0) or not np.isfinite(y0):
         return
@@ -359,7 +371,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     y2 = min(ny, int(round(y0)) + half_size_pix + 1)
     if x2 - x1 < 4 or y2 - y1 < 4:
         return
-    ax.add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor="white", linewidth=0.5, alpha=0.85))
+    ax.add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor="black", linewidth=0.5, alpha=0.85))
     
     nominal_box_size = 2 * half_size_pix + 1
     inset_width, inset_height = inset_axes_size_percent(nx, ny, nominal_box_size, nominal_box_size)
@@ -377,7 +389,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     inset.set_xticks([])
     inset.set_yticks([])
     for spine in inset.spines.values():
-        spine.set_edgecolor("white")
+        spine.set_edgecolor("black")
         spine.set_linewidth(0.6)
     inset._finding_chart_pixel_offset = (float(x1), float(y1))
     connect_inset_to_source_box(ax, inset, x1, x2, y1, y2)
@@ -404,7 +416,7 @@ def connect_inset_to_source_box(ax, inset, x1: int, x2: int, y1: int, y2: int) -
             coordsB=ax.transData,
             axesA=inset,
             axesB=ax,
-            color="white",
+            color="black",
             lw=0.5,
             alpha=0.75,
             clip_on=False,

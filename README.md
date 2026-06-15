@@ -3,7 +3,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 [![Qt GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20PyQt6-green.svg)](finding_chart_plotter/qt_compat.py)
 [![Astropy](https://img.shields.io/badge/astro-Astropy-purple.svg)](https://www.astropy.org/)
-[![Tests](https://img.shields.io/badge/tests-7%20passed-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-15%20passed-brightgreen.svg)](tests)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
 Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts.

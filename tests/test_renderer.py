@@ -7,7 +7,10 @@ from finding_chart_plotter.image_fetchers import centered_tan_wcs
 from finding_chart_plotter.models import ImageData, Target
 from finding_chart_plotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
+    INSET_SOURCE_BOX_FOV_FRACTION,
     image_display_extent,
+    image_fov_arcsec,
+    inset_source_box_arcsec,
     inset_axes_size_percent,
     marker_unit_vectors,
     world_to_scalar_pixel,
@@ -59,3 +62,31 @@ def test_inset_axes_size_is_three_times_source_box_until_clamped():
 def test_inset_axes_size_has_readable_minimum_and_maximum():
     assert inset_axes_size_percent(nx=10000, ny=10000, box_width=10, box_height=10) == pytest.approx((5.0, 5.0))
     assert inset_axes_size_percent(nx=100, ny=100, box_width=100, box_height=100) == pytest.approx((55.0, 55.0))
+
+
+def test_inset_source_box_scales_with_image_fov():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((360, 360)),
+        wcs=centered_tan_wcs(target, nx=360, ny=360, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    assert image_fov_arcsec(image) == pytest.approx(180.0)
+    assert inset_source_box_arcsec(image) == pytest.approx(180.0 * INSET_SOURCE_BOX_FOV_FRACTION)
+
+
+def test_inset_source_box_uses_smaller_dimension_for_rectangular_images():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((240, 480)),
+        wcs=centered_tan_wcs(target, nx=480, ny=240, pixscale_arcsec=1.0),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    assert image_fov_arcsec(image) == pytest.approx(240.0)
+    assert inset_source_box_arcsec(image) == pytest.approx(40.0)
