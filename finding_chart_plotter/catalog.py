@@ -8,6 +8,10 @@ import requests
 
 from .models import Target
 
+GAIA_TAP_SYNC_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
+GAIA_VIZIER_TSV_URL = "https://vizier.cds.unistra.fr/viz-bin/asu-tsv"
+REQUEST_HEADERS = {"User-Agent": "transient-finderchart/0.1"}
+
 
 @dataclass
 class CatalogSource:
@@ -24,6 +28,13 @@ class CatalogSource:
 
 
 def query_gaia_dr3(target: Target, radius_arcmin: float, limit: int = 200, max_magnitude: float | None = None) -> list[CatalogSource]:
+    try:
+        return query_gaia_dr3_tap(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
+    except requests.RequestException:
+        return query_gaia_dr3_vizier(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
+
+
+def query_gaia_dr3_tap(target: Target, radius_arcmin: float, limit: int = 200, max_magnitude: float | None = None) -> list[CatalogSource]:
     radius_deg = radius_arcmin / 60.0
     magnitude_filter = ""
     if max_magnitude is not None:
@@ -40,7 +51,7 @@ def query_gaia_dr3(target: Target, radius_arcmin: float, limit: int = 200, max_m
     ORDER BY phot_g_mean_mag ASC
     """
     response = requests.post(
-        "https://gea.esac.esa.int/tap-server/tap/sync",
+        GAIA_TAP_SYNC_URL,
         data={
             "REQUEST": "doQuery",
             "LANG": "ADQL",
@@ -48,11 +59,36 @@ def query_gaia_dr3(target: Target, radius_arcmin: float, limit: int = 200, max_m
             "QUERY": adql,
         },
         timeout=60,
+        headers=REQUEST_HEADERS,
     )
     if response.status_code >= 400:
         raise RuntimeError(response.text.replace("\n", " ")[:500])
+    return parse_gaia_tap_csv(response.text)
+
+
+def query_gaia_dr3_vizier(target: Target, radius_arcmin: float, limit: int = 200, max_magnitude: float | None = None) -> list[CatalogSource]:
+    params = {
+        "-source": "I/355/gaiadr3",
+        "-c": f"{target.ra_deg:.9f} {target.dec_deg:.9f}",
+        "-c.r": f"{float(radius_arcmin):.6f}",
+        "-c.u": "arcmin",
+        "-out": "Source,RA_ICRS,DE_ICRS,Gmag,Plx,pmRA,pmDE",
+        "-out.max": str(max(int(limit) * 5, int(limit))),
+        "-sort": "Gmag",
+    }
+    response = requests.get(GAIA_VIZIER_TSV_URL, params=params, timeout=60, headers=REQUEST_HEADERS)
+    if response.status_code >= 400:
+        raise RuntimeError(response.text.replace("\n", " ")[:500])
+    sources = parse_gaia_vizier_tsv(response.text)
+    if max_magnitude is not None:
+        sources = [source for source in sources if source.magnitude is not None and source.magnitude <= float(max_magnitude)]
+    sources.sort(key=lambda source: source.magnitude if source.magnitude is not None else float("inf"))
+    return sources[:limit]
+
+
+def parse_gaia_tap_csv(text: str) -> list[CatalogSource]:
     sources: list[CatalogSource] = []
-    for row in csv.DictReader(StringIO(response.text)):
+    for row in csv.DictReader(StringIO(text)):
         mag_text = (row.get("phot_g_mean_mag") or "").strip()
         mag = float(mag_text) if mag_text else None
         label = f"Gaia {row['source_id']}"
@@ -68,6 +104,39 @@ def query_gaia_dr3(target: Target, radius_arcmin: float, limit: int = 200, max_m
                 parallax_mas=parse_optional_float(row.get("parallax")),
                 pmra_mas_per_year=parse_optional_float(row.get("pmra")),
                 pmdec_mas_per_year=parse_optional_float(row.get("pmdec")),
+            )
+        )
+    return sources
+
+
+def parse_gaia_vizier_tsv(text: str) -> list[CatalogSource]:
+    data_lines = [line for line in text.splitlines() if line and not line.startswith("#")]
+    if len(data_lines) < 3:
+        return []
+    rows = [line for line in data_lines if not line.startswith("-") and not line.startswith(" ")]
+    if not rows:
+        return []
+    reader = csv.DictReader(StringIO("\n".join(rows)), delimiter="\t")
+    sources: list[CatalogSource] = []
+    for row in reader:
+        source_id = (row.get("Source") or "").strip()
+        ra_text = (row.get("RA_ICRS") or "").strip()
+        dec_text = (row.get("DE_ICRS") or "").strip()
+        if not source_id or not ra_text or not dec_text:
+            continue
+        mag = parse_optional_float(row.get("Gmag"))
+        sources.append(
+            CatalogSource(
+                ra_deg=float(ra_text),
+                dec_deg=float(dec_text),
+                label=f"Gaia {source_id}",
+                magnitude=mag,
+                magnitude_band="G" if mag is not None else "",
+                catalog="Gaia DR3",
+                source_id=source_id,
+                parallax_mas=parse_optional_float(row.get("Plx")),
+                pmra_mas_per_year=parse_optional_float(row.get("pmRA")),
+                pmdec_mas_per_year=parse_optional_float(row.get("pmDE")),
             )
         )
     return sources
@@ -91,6 +160,7 @@ def query_panstarrs_dr2(target: Target, radius_arcmin: float, limit: int = 200, 
         "https://catalogs.mast.stsci.edu/api/v0.1/panstarrs/dr2/mean.csv",
         params=params,
         timeout=60,
+        headers=REQUEST_HEADERS,
     )
     if response.status_code >= 400:
         params.pop("columns", None)
@@ -98,6 +168,7 @@ def query_panstarrs_dr2(target: Target, radius_arcmin: float, limit: int = 200, 
             "https://catalogs.mast.stsci.edu/api/v0.1/panstarrs/dr2/mean.csv",
             params=params,
             timeout=60,
+            headers=REQUEST_HEADERS,
         )
     if response.status_code >= 400:
         raise RuntimeError(response.text.replace("\n", " ")[:500])
