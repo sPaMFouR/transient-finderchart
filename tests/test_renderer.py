@@ -95,4 +95,4 @@ def test_inset_source_box_uses_smaller_dimension_for_rectangular_images():
 
 def test_catalog_source_colors_distinguish_catalogs():
     assert catalog_source_color(type("Source", (), {"catalog": "Gaia DR3"})()) == "orange"
-    assert catalog_source_color(type("Source", (), {"catalog": "Pan-STARRS DR2"})()) == "lightgreen"
+    assert catalog_source_color(type("Source", (), {"catalog": "Pan-STARRS DR2"})()) == "lightcoral"

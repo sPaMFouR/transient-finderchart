@@ -224,7 +224,7 @@
     - The catalog query controls support Gaia DR3, Pan-STARRS DR2, or both, with an optional brightness cut.
     - Gaia sources include parallax, `pmRA`, and `pmDE` when the catalog returns those values.
     - Selected catalog stars report delta RA, delta Dec, and PA east of north for blind-offset use.
-    - Selected stars are highlighted in royal blue; unselected Gaia stars are orange and unselected Pan-STARRS stars are light green.
+    - Selected stars are highlighted in royal blue; unselected Gaia stars are orange and unselected Pan-STARRS stars are light red.
     - Catalog markers are drawn in both the main chart and the zoomed inset.
     - Added a development web renderer that reuses the Python chart pipeline.
 
