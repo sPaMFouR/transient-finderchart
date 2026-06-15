@@ -23,7 +23,9 @@ class Target:
 
     @property
     def label(self) -> str:
-        return self.display_name or self.tns_name or f"{self.ra_deg:.6f}, {self.dec_deg:.6f}"
+        base = self.display_name or self.tns_name or f"{self.ra_deg:.6f}, {self.dec_deg:.6f}"
+        alternate = next((alias for alias in self.aliases if alias and alias.lower() != base.lower()), "")
+        return f"{base} ({alternate})" if alternate else base
 
 
 @dataclass

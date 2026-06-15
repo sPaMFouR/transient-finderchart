@@ -40,6 +40,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 from .catalog import CatalogSource, query_catalog_sources
+from .exporting import default_export_filename, ensure_export_suffix
 from .image_fetchers import available_bands, available_surveys, fetch_image
 from .mpl_compat import ensure_astropy_wcsaxes_compat
 from .models import ChartSettings, ImageData, ImageRequest, Target
@@ -188,6 +189,8 @@ class MainWindow(QMainWindow):
         info_layout = QFormLayout(info_box)
         self.target_name_edit = QLineEdit()
         self.target_name_edit.setPlaceholderText("Target label used on chart")
+        self.alternate_name_edit = QLineEdit()
+        self.alternate_name_edit.setPlaceholderText("ZTF / ATLAS / GOTO name")
         self.ra_edit = QLineEdit()
         self.ra_edit.setPlaceholderText("RA, e.g. 14:03:38.56 or 210.9107")
         self.dec_edit = QLineEdit()
@@ -195,7 +198,10 @@ class MainWindow(QMainWindow):
         self.type_label = QLabel("-")
         self.use_coordinates_button = QPushButton("Use Coordinates")
         self.use_coordinates_button.clicked.connect(self.use_custom_coordinates)
+        self.target_name_edit.textChanged.connect(self.update_target_name_tag)
+        self.alternate_name_edit.textChanged.connect(self.update_target_name_tag)
         info_layout.addRow("Name", self.target_name_edit)
+        info_layout.addRow("Alternate name", self.alternate_name_edit)
         info_layout.addRow("RA", self.ra_edit)
         info_layout.addRow("Dec", self.dec_edit)
         info_layout.addRow(self.use_coordinates_button)
@@ -466,17 +472,29 @@ class MainWindow(QMainWindow):
                 self.show_error(f"Could not parse custom RA/Dec. Use sexagesimal RA/Dec or decimal degrees.\n{exc}")
                 return
         name = self.target_name_edit.text().strip() or self.name_edit.text().strip() or "Custom transient"
-        self._target_loaded(Target(display_name=name, ra_deg=coord.ra.deg, dec_deg=coord.dec.deg))
+        alternate = self.alternate_name_edit.text().strip()
+        self._target_loaded(Target(display_name=name, ra_deg=coord.ra.deg, dec_deg=coord.dec.deg, aliases=[alternate] if alternate else []))
 
     def _target_loaded(self, target: Target) -> None:
         self.search_button.setEnabled(True)
         self.target = target
         self.catalog_sources = []
-        self.target_name_edit.setText(target.label)
+        self.target_name_edit.setText(target.display_name or target.tns_name or target.label)
+        self.alternate_name_edit.setText(target.aliases[0] if target.aliases else "")
         self.ra_edit.setText(target_coord_strings(target)[0])
         self.dec_edit.setText(target_coord_strings(target)[1])
         self.type_label.setText(target.transient_type or "-")
         self.status_label.setText(f"Loaded target {target.label}")
+        self.update_chart_from_controls()
+
+    def update_target_name_tag(self) -> None:
+        if self.target is None:
+            return
+        name = self.target_name_edit.text().strip()
+        alternate = self.alternate_name_edit.text().strip()
+        if name:
+            self.target.display_name = name
+        self.target.aliases = [alternate] if alternate else []
         self.update_chart_from_controls()
 
     def update_band_choices(self) -> None:
@@ -572,12 +590,12 @@ class MainWindow(QMainWindow):
         if self.image is None or self.target is None:
             self.show_error("Load an image before exporting.")
             return
-        default_name = f"{self.target.label.replace(' ', '_')}_finding_chart.png"
+        default_name = default_export_filename(self.target)
         path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Export finding chart",
             str(Path.cwd() / default_name),
-            "PNG (*.png);;JPEG (*.jpg *.jpeg);;PDF (*.pdf)",
+            "JPEG (*.jpg *.jpeg);;PNG (*.png);;PDF (*.pdf)",
         )
         if not path:
             return
@@ -675,16 +693,6 @@ def compact_error_message(exc: Exception) -> str:
     if len(text) > 420:
         return text[:417].rstrip() + "..."
     return text
-
-
-def ensure_export_suffix(path: Path, selected_filter: str) -> Path:
-    if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".pdf"}:
-        return path
-    if selected_filter.startswith("JPEG"):
-        return path.with_suffix(".jpg")
-    if selected_filter.startswith("PDF"):
-        return path.with_suffix(".pdf")
-    return path.with_suffix(".png")
 
 
 def target_coord_strings(target: Target) -> tuple[str, str]:
