@@ -74,7 +74,7 @@
 
 12. Updated catalog, GUI layout, and chart annotations.
     - Replaced the catalog scaffold with a live Gaia DR3 TAP query.
-    - Gaia catalog sources are overlaid on the chart as small yellow open circles.
+    - Gaia catalog sources are overlaid on the chart as small open circles.
     - Combined `Target` and `Archive` into one `Target / Archive` tab.
     - Combined `Chart` and `Catalog` into one `Chart / Catalog` tab.
     - Imported `plot_style.py` opportunistically for project plotting defaults while keeping GUI exports robust on systems without TeX.
@@ -198,7 +198,7 @@
     - Export now uses a backend-independent Matplotlib `Figure` to avoid Tk/Qt backend conflicts.
 
 31. Updated catalog overlay color.
-    - Gaia/catalog source markers are now outlined in dark orange.
+    - Catalog source markers use catalog-specific outlines.
 
 32. Simplified slit PA and source brightness controls.
     - Removed the visible PA mode dropdown.
@@ -220,10 +220,24 @@
     - The slit is off by default, with a `Draw slit` checkbox in the Slit box.
     - The parallactic button only copies the current parallactic angle into the fixed PA field when explicitly clicked.
 
+36. Added catalog selection, blind-offset details, and web rendering.
+    - The catalog query controls support Gaia DR3, Pan-STARRS DR2, or both, with an optional brightness cut.
+    - Gaia sources include parallax, `pmRA`, and `pmDE` when the catalog returns those values.
+    - Selected catalog stars report delta RA, delta Dec, and PA east of north for blind-offset use.
+    - Selected stars are highlighted in royal blue; unselected Gaia stars are orange and unselected Pan-STARRS stars are light green.
+    - Catalog markers are drawn in both the main chart and the zoomed inset.
+    - Added a development web renderer that reuses the Python chart pipeline.
+
+37. Hardened Gaia DR3 catalog queries.
+    - Gaia queries try the ESA Gaia TAP service first.
+    - If ESA TAP resets or times out, the query falls back to CDS/VizieR Gaia DR3 TSV output.
+    - The VizieR fallback preserves magnitude, parallax, and proper-motion fields used by the blind-offset detail panel.
+    - Verified a live Gaia DR3 fallback query around `SN 2023ixf` returned sources.
+
 ## Known next steps
 
 1. Add archive coverage checks that enable/highlight survey tabs before image loading.
-2. Add Pan-STARRS and Legacy Tractor catalog overlays alongside the implemented Gaia DR3 overlay.
+2. Add Legacy Tractor catalog overlays if deeper reference catalogs are needed.
 3. Add instrument presets if specific telescope/instrument chart defaults are needed.
 4. Add a sample gallery once preferred finding-chart visual style is chosen.
 5. Add automated tests around WCS slit geometry and parallactic-angle calculations.

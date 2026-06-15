@@ -14,9 +14,9 @@ Desktop and development-web finding chart tool for transient observations. It re
 
 - Archives: Pan-STARRS, Legacy Survey, DSS2, 2MASS.
 - Bands/modes: survey-specific single-band and color-composite options.
-- Chart overlays: SN marker, 30 arcsec inset, slit, compass, 1 arcmin ruler.
+- Chart overlays: SN marker, FOV-scaled 3x inset, slit, compass, 1 arcmin ruler.
 - Injected SN: empirical field-star PSF with Moffat fallback.
-- Catalogs: Gaia DR3 and Pan-STARRS DR2 overlays with brightness cut and inset markers.
+- Catalogs: Gaia DR3 with VizieR fallback and Pan-STARRS DR2 overlays with brightness cut and inset markers.
 - Blind offsets: selected catalog stars report delta RA, delta Dec, PA east of north, magnitude, and Gaia parallax/proper motion when available.
 - Export: PNG, JPG, PDF.
 

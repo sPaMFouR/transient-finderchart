@@ -680,6 +680,8 @@ def catalog_source_color(source) -> str:
     catalog = getattr(source, "catalog", "")
     if "Pan-STARRS" in catalog:
         return "lightgreen"
+    if "Gaia" in catalog:
+        return "orange"
     return "white"
 
 
