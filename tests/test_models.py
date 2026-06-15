@@ -1,4 +1,4 @@
-from finding_chart_plotter.models import Target
+from findingchart_guiplotter.models import Target
 
 
 def test_target_label_includes_first_distinct_alias():

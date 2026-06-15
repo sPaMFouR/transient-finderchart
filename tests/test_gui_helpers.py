@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from finding_chart_plotter.exporting import default_export_filename, ensure_export_suffix, safe_filename_part
-from finding_chart_plotter.models import Target
+from findingchart_guiplotter.exporting import default_export_filename, ensure_export_suffix, safe_filename_part
+from findingchart_guiplotter.models import Target
 
 
 def test_default_export_filename_prefers_alternate_name():

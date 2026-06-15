@@ -1,14 +1,14 @@
 # TransientFinderchart
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
-[![Qt GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20PyQt6-green.svg)](finding_chart_plotter/qt_compat.py)
+[![Qt GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20PyQt6-green.svg)](findingchart_guiplotter/qt_compat.py)
 [![Astropy](https://img.shields.io/badge/astro-Astropy-purple.svg)](https://www.astropy.org/)
 [![Tests](https://img.shields.io/badge/tests-18%20passed-brightgreen.svg)](tests)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
 Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts.
 
-![Template finding chart](docs/assets/SN2023ixf_finding_chart.png)
+![Template finding chart](docs/assets/findingchart_SN2024aecx.jpg)
 
 ## Features
 
@@ -36,38 +36,40 @@ python3 -m venv .venv
 
 ## Run
 
+### 1. Desktop Python GUI
+
+Use this for the main PySide6/PyQt6 finding-chart application:
+
 ```bash
 python3 run_finding_chart.py
 ```
-
-or:
-
-```bash
-python3 -m finding_chart_plotter
-```
-
-Development web interface:
-
-```bash
-python3 -m finding_chart_plotter.web --host 127.0.0.1 --port 8765
-```
-
-Open `http://127.0.0.1:8765`.
-
-Native macOS SwiftUI interface:
-
-```bash
-cd FindingChartMacApp
-swift run FindingChartMacApp
-```
-
-Set `FINDING_CHART_PYTHON` to a virtualenv/conda Python with the package dependencies when needed.
 
 If PySide6 fails in a conda environment with PyQt6 already installed:
 
 ```bash
 FINDING_CHART_QT_API=pyqt6 python run_finding_chart.py
 ```
+
+### 2. Development Web Interface
+
+Use this for the lightweight browser interface backed by the same Python renderer:
+
+```bash
+python3 -m findingchart_guiplotter.web --host 127.0.0.1 --port 8765
+```
+
+Open `http://127.0.0.1:8765`.
+
+### 3. Native macOS SwiftUI Interface
+
+Use this for the experimental native macOS shell around the Python pipeline:
+
+```bash
+cd findingchart_macapp
+swift run findingchart_macapp
+```
+
+Set `FINDING_CHART_PYTHON` to a virtualenv/conda Python with the package dependencies when needed.
 
 ## Workflow
 
@@ -81,7 +83,7 @@ FINDING_CHART_QT_API=pyqt6 python run_finding_chart.py
 
 ## TNS Credentials
 
-TNS credentials are not saved in this repository. `finding_chart_plotter/tns.py` reads them from environment variables when present:
+TNS credentials are not saved in this repository. `findingchart_guiplotter/tns.py` reads them from environment variables when present:
 
 ```bash
 export TNS_API_KEY="..."

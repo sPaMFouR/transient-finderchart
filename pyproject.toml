@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "supernova-finding-chart-plotter"
+name = "findingchart-guiplotter"
 version = "0.1.0"
 description = "PySide6 finding chart plotter for supernova observations."
 readme = "README.md"
@@ -23,5 +23,5 @@ dependencies = [
 ]
 
 [project.scripts]
-finding-chart-plotter = "finding_chart_plotter.gui:main"
-finding-chart-web = "finding_chart_plotter.web:main"
+findingchart-guiplotter = "findingchart_guiplotter.gui:main"
+findingchart-web = "findingchart_guiplotter.web:main"

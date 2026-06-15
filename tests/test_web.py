@@ -1,4 +1,4 @@
-from finding_chart_plotter.web import payload_bool
+from findingchart_guiplotter.web import payload_bool
 
 
 def test_payload_bool_accepts_browser_and_api_values():

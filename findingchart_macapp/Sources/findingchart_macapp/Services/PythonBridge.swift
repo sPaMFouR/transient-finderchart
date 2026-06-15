@@ -11,7 +11,7 @@ struct BridgeConfig {
             ?? "/Users/avinash/Work/SupernovaeData/_ProjectG_FindingChart"
         return BridgeConfig(
             pythonPath: env["FINDING_CHART_PYTHON"] ?? "/usr/bin/env python3",
-            bridgeScript: env["FINDING_CHART_BRIDGE"] ?? "\(repoRoot)/FindingChartMacApp/bridge/finding_chart_bridge.py",
+            bridgeScript: env["FINDING_CHART_BRIDGE"] ?? "\(repoRoot)/findingchart_macapp/bridge/findingchart_bridge.py",
             repoDir: repoRoot
         )
     }()

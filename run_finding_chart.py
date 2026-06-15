@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Launch the Supernova Finding Chart Plotter."""
 
-from finding_chart_plotter.gui import main
+from findingchart_guiplotter.gui import main
 
 
 if __name__ == "__main__":

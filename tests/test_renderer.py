@@ -3,9 +3,9 @@ import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 
-from finding_chart_plotter.image_fetchers import centered_tan_wcs
-from finding_chart_plotter.models import ImageData, Target
-from finding_chart_plotter.renderer import (
+from findingchart_guiplotter.image_fetchers import centered_tan_wcs
+from findingchart_guiplotter.models import ImageData, Target
+from findingchart_guiplotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
     INSET_SOURCE_BOX_FOV_FRACTION,
     catalog_source_color,

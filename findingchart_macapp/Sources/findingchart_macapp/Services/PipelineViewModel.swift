@@ -178,7 +178,6 @@ final class PipelineViewModel: ObservableObject {
         params.targetName = target.name
         params.raText = target.raText
         params.decText = target.decText
-        params.resolveTNS = false
     }
 
     private func merge(_ output: PipelineResult, into existing: PipelineResult?) -> PipelineResult {

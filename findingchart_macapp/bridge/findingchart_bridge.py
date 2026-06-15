@@ -20,7 +20,7 @@ def _load_repo(repo_dir: Path) -> None:
 
 
 def _state_dir(repo_dir: Path) -> Path:
-    path = repo_dir / "FindingChartMacApp" / "rendered_charts"
+    path = repo_dir / "findingchart_macapp" / "rendered_charts"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -43,8 +43,8 @@ def _parse_target(payload: dict[str, Any]):
     import astropy.units as u
     from astropy.coordinates import SkyCoord
 
-    from finding_chart_plotter.models import Target
-    from finding_chart_plotter.tns import TNSClient
+    from findingchart_guiplotter.models import Target
+    from findingchart_guiplotter.tns import TNSClient
 
     if payload.get("resolveTNS", False):
         return TNSClient().lookup(str(payload.get("queryName", "")).strip())
@@ -107,8 +107,8 @@ def _source_payload(source, target=None) -> dict[str, Any]:
 
 
 def _metadata() -> dict[str, Any]:
-    from finding_chart_plotter.image_fetchers import SURVEY_BANDS, available_surveys
-    from finding_chart_plotter.observatories import OBSERVATORIES
+    from findingchart_guiplotter.image_fetchers import SURVEY_BANDS, available_surveys
+    from findingchart_guiplotter.observatories import OBSERVATORIES
 
     return {
         "ok": True,
@@ -125,8 +125,8 @@ def _load_target(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _image_request(payload: dict[str, Any]):
-    from finding_chart_plotter.image_fetchers import available_bands
-    from finding_chart_plotter.models import ImageRequest
+    from findingchart_guiplotter.image_fetchers import available_bands
+    from findingchart_guiplotter.models import ImageRequest
 
     survey = str(payload.get("survey") or "Pan-STARRS")
     mode = str(payload.get("mode") or "Single band")
@@ -143,8 +143,8 @@ def _image_request(payload: dict[str, Any]):
 
 
 def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
-    from finding_chart_plotter.image_fetchers import fetch_image
-    from finding_chart_plotter.renderer import pixel_scale_arcsec
+    from findingchart_guiplotter.image_fetchers import fetch_image
+    from findingchart_guiplotter.renderer import pixel_scale_arcsec
 
     target = _parse_target(payload)
     request = _image_request(payload)
@@ -183,8 +183,8 @@ def _load_catalog_cache(payload: dict[str, Any]) -> list[Any]:
 
 
 def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
-    from finding_chart_plotter.models import ChartSettings
-    from finding_chart_plotter.observatories import OBSERVATORIES, parallactic_angle_deg
+    from findingchart_guiplotter.models import ChartSettings
+    from findingchart_guiplotter.observatories import OBSERVATORIES, parallactic_angle_deg
 
     import astropy.units as u
     from astropy.coordinates import SkyCoord
@@ -225,7 +225,7 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
 
 
 def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, export_format: str = "png", dpi: int = 180) -> dict[str, Any]:
-    from finding_chart_plotter.renderer import export_chart, pixel_scale_arcsec
+    from findingchart_guiplotter.renderer import export_chart, pixel_scale_arcsec
 
     cached = _load_image_cache(payload)
     target = cached["target"]
@@ -263,7 +263,7 @@ def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, ex
 
 
 def _query_catalog(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
-    from finding_chart_plotter.catalog import query_catalog_sources
+    from findingchart_guiplotter.catalog import query_catalog_sources
 
     cached = _load_image_cache(payload)
     target = cached["target"]

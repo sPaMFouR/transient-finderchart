@@ -1,7 +1,8 @@
+import AppKit
 import SwiftUI
 
 @main
-struct FindingChartMacApp: App {
+struct findingchart_macapp: App {
     @StateObject private var vm = PipelineViewModel()
 
     var body: some Scene {
@@ -10,13 +11,36 @@ struct FindingChartMacApp: App {
                 .frame(minWidth: 980, minHeight: 640)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(HaloBackground())
+                .background(WindowConfigurator())
                 .preferredColorScheme(.dark)
                 .task {
                     vm.loadMetadata()
                 }
         }
-        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
+    }
+}
+
+struct WindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            configure(view.window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            configure(nsView.window)
+        }
+    }
+
+    private func configure(_ window: NSWindow?) {
+        guard let window else { return }
+        window.styleMask.insert(.resizable)
+        window.minSize = NSSize(width: 980, height: 640)
+        window.maxSize = NSSize(width: 10000, height: 10000)
     }
 }
 

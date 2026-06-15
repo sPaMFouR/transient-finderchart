@@ -25,7 +25,6 @@ struct ControlSidebar: View {
                 .toggleStyle(.switch)
             TextField("IAU/ZTF name", text: $vm.params.queryName)
                 .textFieldStyle(.roundedBorder)
-                .disabled(!vm.params.resolveTNS)
             TextField("Chart label", text: $vm.params.targetName)
                 .textFieldStyle(.roundedBorder)
             HStack {
@@ -173,8 +172,8 @@ struct ControlSidebar: View {
     private var saveSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(systemName: "square.and.arrow.down", title: "Save")
-            ActionButton(title: "Save PDF 2000 dpi", systemName: "doc.richtext", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.exportPDF)
-            ActionButton(title: "Save JPG 300 dpi", systemName: "photo", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.exportJPG)
+            ActionButton(title: "Save PDF (2000 dpi)", systemName: "doc.richtext", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.exportPDF)
+            ActionButton(title: "Save JPG (300 dpi)", systemName: "photo", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.exportJPG)
         }
         .glassCard()
     }

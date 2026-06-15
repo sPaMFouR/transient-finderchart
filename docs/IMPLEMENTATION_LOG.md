@@ -8,7 +8,7 @@
    - The old scripts were left unchanged.
 
 2. Created a new PySide6 app package.
-   - Added `finding_chart_plotter/`.
+   - Added `findingchart_guiplotter/`.
    - Added `run_finding_chart.py` as a direct launcher.
    - Added `pyproject.toml` and `requirements.txt`.
 
@@ -68,7 +68,7 @@
     - Live Legacy Survey color cutout returned RGB image data with WCS.
 
 11. Added Qt binding compatibility.
-    - `finding_chart_plotter/qt_compat.py` prefers PySide6.
+    - `findingchart_guiplotter/qt_compat.py` prefers PySide6.
     - If `FINDING_CHART_QT_API=pyqt6` is set, the GUI imports PyQt6 instead.
     - This avoids Qt library collisions in conda environments that already load PyQt6, such as the observed `pypeit` environment.
 
@@ -180,7 +180,7 @@
     - The metadata box starts lower on the plot so the PA/slit text appears below the target label.
 
 28. Adopted empirical fake-star PSF injection.
-    - Added `finding_chart_plotter.empirical_psf` based on the supplied fake-star injection script.
+    - Added `findingchart_guiplotter.empirical_psf` based on the supplied fake-star injection script.
     - Single-band images now try to build an empirical PSF from detected field stars, recenter and normalize PSF stamps, shift the kernel to the transient subpixel position, and inject the scaled fake source.
     - If empirical PSF construction is unavailable or too few suitable stars are found, injection falls back to the analytic Moffat kernel.
     - Added `photutils` as the preferred DAOStarFinder dependency, with a SciPy local-maximum fallback.
