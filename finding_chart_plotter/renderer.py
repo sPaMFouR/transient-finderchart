@@ -679,7 +679,7 @@ def draw_catalog_marker(ax, x: float, y: float, source, settings: ChartSettings,
 def catalog_source_color(source) -> str:
     catalog = getattr(source, "catalog", "")
     if "Pan-STARRS" in catalog:
-        return "dimgray"
+        return "cyan"
     return "white"
 
 

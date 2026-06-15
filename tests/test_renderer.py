@@ -8,6 +8,7 @@ from finding_chart_plotter.models import ImageData, Target
 from finding_chart_plotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
     INSET_SOURCE_BOX_FOV_FRACTION,
+    catalog_source_color,
     image_display_extent,
     image_fov_arcsec,
     inset_source_box_arcsec,
@@ -90,3 +91,8 @@ def test_inset_source_box_uses_smaller_dimension_for_rectangular_images():
 
     assert image_fov_arcsec(image) == pytest.approx(240.0)
     assert inset_source_box_arcsec(image) == pytest.approx(40.0)
+
+
+def test_catalog_source_colors_distinguish_catalogs():
+    assert catalog_source_color(type("Source", (), {"catalog": "Gaia DR3"})()) == "white"
+    assert catalog_source_color(type("Source", (), {"catalog": "Pan-STARRS DR2"})()) == "cyan"
