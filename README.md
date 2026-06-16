@@ -6,7 +6,7 @@
 [![Tests](https://img.shields.io/badge/tests-29%20passed-brightgreen.svg)](tests)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts.
+Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts. The inset and finding-chart presentation are partly inspired by Sean Brennan's [`Astro-Sean/finder_chart`](https://github.com/Astro-Sean/finder_chart).
 
 ![Template finding chart](docs/assets/findingchartGUI_2024ggi.jpg)
 
