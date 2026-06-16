@@ -18,7 +18,7 @@ from matplotlib.figure import Figure
 from matplotlib.patches import ConnectionPatch, Polygon, Rectangle
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from .empirical_psf import EmpiricalPSFError, empirical_psf_from_field, inject_psf, moffat_kernel
+from .empirical_psf import EmpiricalPSFError, empirical_psf_from_field, inject_psf, injection_stamp_size, moffat_kernel
 from .mpl_compat import ensure_astropy_wcsaxes_compat
 from .models import ChartSettings, ImageData, Target
 
@@ -105,6 +105,19 @@ def image_display_extent(nx: int, ny: int) -> tuple[float, float, float, float]:
     return -0.5, nx - 0.5, -0.5, ny - 0.5
 
 
+def normalized_psf_flux_mode(settings: ChartSettings) -> str:
+    mode = (settings.psf_flux_mode or "catalog-calibrated").strip().lower()
+    if mode == "visual fallback":
+        return "visual fallback"
+    return "catalog-calibrated"
+
+
+def injection_reference_plane(data: np.ndarray) -> np.ndarray:
+    if data.ndim == 2:
+        return np.asarray(data, dtype=float)
+    return np.nanmean(np.asarray(data, dtype=float), axis=2)
+
+
 def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSettings) -> np.ndarray:
     data = np.array(image.data, dtype=float, copy=True)
     if not settings.show_injected_source:
@@ -114,18 +127,39 @@ def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSet
         return data
     scale = pixel_scale_arcsec(image)
     fwhm_pix = max(settings.psf_fwhm_arcsec / scale, 1.0)
+    fallback_size = injection_stamp_size(fwhm_pix, empirical_size=25)
+    flux_mode = normalized_psf_flux_mode(settings)
     if data.ndim == 3:
-        total_flux = rgb_visual_flux(settings)
-        kernel = moffat_kernel(fwhm_pix)
+        kernel = moffat_kernel(fwhm_pix, size=fallback_size)
+        total_flux = estimate_target_flux_from_field(
+            injection_reference_plane(data),
+            image,
+            target,
+            settings,
+            fwhm_pix,
+            mode=flux_mode,
+        )
+        if total_flux is None:
+            return data
         for channel in range(data.shape[2]):
             data[..., channel] = np.clip(inject_psf(data[..., channel], kernel, x0, y0, total_flux), 0, 1)
         return data
     try:
         kernel, _, psf_star_fluxes = empirical_psf_from_field(data, x0, y0, fwhm_pix=fwhm_pix)
-        total_flux = estimate_target_flux_from_field(data, image, target, settings, fwhm_pix, psf_star_fluxes)
     except (EmpiricalPSFError, ValueError, RuntimeError):
-        kernel = moffat_kernel(fwhm_pix)
-        total_flux = estimate_target_flux_from_field(data, image, target, settings, fwhm_pix)
+        kernel = moffat_kernel(fwhm_pix, size=fallback_size)
+        psf_star_fluxes = None
+    total_flux = estimate_target_flux_by_mode(
+        data,
+        image,
+        target,
+        settings,
+        fwhm_pix,
+        psf_star_fluxes=psf_star_fluxes,
+        mode=flux_mode,
+    )
+    if total_flux is None:
+        return data
     finite = data[np.isfinite(data)]
     fill = np.nanmedian(finite) if finite.size else 0.0
     return inject_psf(np.nan_to_num(data, nan=fill), kernel, x0, y0, total_flux)
@@ -150,10 +184,39 @@ def estimate_target_flux_from_field(
     settings: ChartSettings,
     fwhm_pix: float,
     psf_star_fluxes: np.ndarray | None = None,
+) -> float | None:
+    return estimate_target_flux_by_mode(
+        data,
+        image,
+        target,
+        settings,
+        fwhm_pix,
+        psf_star_fluxes=psf_star_fluxes,
+        mode=normalized_psf_flux_mode(settings),
+    )
+
+
+def estimate_target_flux_by_mode(
+    data: np.ndarray,
+    image: ImageData,
+    target: Target,
+    settings: ChartSettings,
+    fwhm_pix: float,
+    psf_star_fluxes: np.ndarray | None = None,
+    mode: str = "catalog-calibrated",
+) -> float | None:
+    if mode == "catalog-calibrated":
+        return estimate_catalog_flux_scale(data, image, target, settings, fwhm_pix)
+    return estimate_visual_fallback_flux(data, settings, psf_star_fluxes)
+
+
+def estimate_visual_fallback_flux(
+    data: np.ndarray,
+    settings: ChartSettings,
+    psf_star_fluxes: np.ndarray | None = None,
 ) -> float:
-    empirical_flux = estimate_catalog_flux_scale(data, image, target, settings, fwhm_pix)
-    if empirical_flux is not None:
-        return empirical_flux
+    if data.ndim == 3:
+        return rgb_visual_flux(settings)
     if psf_star_fluxes is not None and psf_star_fluxes.size:
         median_star_flux = float(np.nanmedian(psf_star_fluxes))
         if np.isfinite(median_star_flux) and median_star_flux > 0:
@@ -358,11 +421,12 @@ def draw_metadata_box(ax, image: ImageData, target: Target, settings: ChartSetti
         transform=ax.transAxes,
         ha="left",
         va="top",
-        color="white",
+        color="xkcd:bright red",
         fontsize=10,
         fontfamily=SCIENCE_FONT_FAMILY,
         linespacing=1.2,
-        bbox={"facecolor": "black", "alpha": 0.55, "edgecolor": "white", "linewidth": 0.8, "pad": 5},
+        bbox={"facecolor": "xkcd:white", "alpha": 0.85, "edgecolor": "xkcd:dark", "linewidth": 0.5, "pad": 0.4, "boxstyle":'round',
+},
     )
 
 
@@ -494,13 +558,13 @@ def draw_inset_scalebar(inset, scale: float, shape: tuple[int, int]) -> None:
     inset.plot([x0 + length_pix, x0 + length_pix], [y0 - tick, y0 + tick], color=SLIT_COLOR, lw=0.8)
     
     inset.text(
-        x0 + 0.5 * length_pix,
-        y0 - 3,
+        x0 + 0.54 * length_pix,
+        y0 - 4,
         arcsec_label(length_arcsec),
         color=SLIT_COLOR,
         ha="center",
         va="top",
-        fontsize=7,
+        fontsize=10,
         # bbox={"facecolor": "black", "alpha": 0.4, "edgecolor": "none", "pad": 1.0},
     )
 
@@ -518,7 +582,7 @@ def inset_scalebar_length_arcsec(scale: float, shape: tuple[int, int]) -> float:
 
 def arcsec_label(length_arcsec: float) -> str:
     if abs(length_arcsec - 60.0) < 1e-6:
-        return "1'"
+        return "1\'"
     if abs(length_arcsec % 60.0) < 1e-6:
         return f"{length_arcsec / 60.0:.0f}'"
     return f'{length_arcsec:.0f}"'
@@ -544,7 +608,7 @@ def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
             "shrinkA": 0,
             "shrinkB": 4,
         },
-        bbox={"facecolor": "white", "alpha": 0.5, "edgecolor": "none", "pad": 1.5},
+        bbox={"facecolor": "xkcd:white", "alpha": 0.5, "edgecolor": "xkcd:dark", "linewidth": 0.3, "pad": 0.3, "boxstyle": 'round',},
         annotation_clip=False,
         zorder=20,
         clip_on=False,
@@ -638,7 +702,7 @@ def draw_scale_ruler(ax, image: ImageData, length_arcsec: float) -> None:
         center_y + 2.5 * tick,
         arcsec_label(length_arcsec),
         color=SLIT_COLOR,
-        fontsize=9,
+        fontsize=12,
         weight="bold",
         ha="center",
         va="bottom",

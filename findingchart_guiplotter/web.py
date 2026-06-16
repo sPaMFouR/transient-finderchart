@@ -103,6 +103,8 @@ def render_from_payload(payload: dict) -> str:
         slit_width_arcsec=float(payload.get("slit_width_arcsec") or 2.0),
         slit_length_arcsec=float(payload.get("slit_length_arcsec") or 20.0),
         slit_pa_deg=float(payload.get("slit_pa_deg") or 0.0),
+        psf_magnitude=float(payload.get("psf_magnitude") or 18.0),
+        psf_flux_mode=str(payload.get("psf_flux_mode") or "catalog-calibrated"),
         show_slit=payload_bool(payload, "show_slit", False),
         show_injected_source=payload_bool(payload, "show_injected_source", True),
         show_crosshair=payload_bool(payload, "show_crosshair", True),
@@ -199,6 +201,8 @@ INDEX_HTML = """<!doctype html>
           <legend>Overlays</legend>
           <label>Catalog <select name="catalog"><option>None</option><option>Gaia DR3</option><option>Pan-STARRS DR2</option><option>Gaia DR3 + Pan-STARRS DR2</option></select></label>
           <label class="check"><input type="checkbox" name="show_injected_source" checked> Inject SN</label>
+          <label>SN mag <input name="psf_magnitude" value="18.0"></label>
+          <label>Flux mode <select name="psf_flux_mode"><option>catalog-calibrated</option><option>visual fallback</option></select></label>
           <label class="check"><input type="checkbox" name="show_crosshair" checked> Crosshair</label>
           <label class="check"><input type="checkbox" name="show_compass" checked> Compass</label>
           <label class="check"><input type="checkbox" name="show_slit"> Draw slit</label>

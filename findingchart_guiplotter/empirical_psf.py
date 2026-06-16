@@ -27,6 +27,13 @@ def odd_stamp_size(fwhm_pix: float) -> int:
     return min(size, 61)
 
 
+def injection_stamp_size(fwhm_pix: float, empirical_size: int) -> int:
+    size = int(math.ceil(max(float(empirical_size), 24.0 * fwhm_pix, 65.0)))
+    if size % 2 == 0:
+        size += 1
+    return min(size, 121)
+
+
 def cut_stamp(image: np.ndarray, x: float, y: float, size: int) -> np.ndarray:
     if size % 2 == 0:
         raise ValueError("stamp size must be odd")
@@ -279,6 +286,81 @@ def circularize_psf(psf: np.ndarray, bins: int | None = None) -> np.ndarray:
     return circular
 
 
+def pad_psf(psf: np.ndarray, target_size: int) -> np.ndarray:
+    if target_size % 2 == 0:
+        raise ValueError("target size must be odd")
+    size = psf.shape[0]
+    if psf.shape[0] != psf.shape[1]:
+        raise ValueError("PSF kernel must be square")
+    if target_size < size:
+        raise ValueError("target size must be at least the input size")
+    if target_size == size:
+        return np.array(psf, dtype=float, copy=True)
+    padded = np.zeros((target_size, target_size), dtype=float)
+    offset = (target_size - size) // 2
+    padded[offset : offset + size, offset : offset + size] = psf
+    return padded
+
+
+def radial_profile(psf: np.ndarray, bins: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+    data = np.array(psf, dtype=float, copy=False)
+    ny, nx = data.shape
+    y, x = np.mgrid[:ny, :nx]
+    cy = 0.5 * (ny - 1)
+    cx = 0.5 * (nx - 1)
+    radius = np.hypot(x - cx, y - cy)
+    max_radius = float(np.max(radius))
+    if max_radius <= 0:
+        return np.asarray([0.0]), np.asarray([float(data[int(cy), int(cx)])])
+    bins = bins or max(8, int(math.ceil(max_radius)) + 1)
+    edges = np.linspace(0.0, max_radius, bins + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    profile = np.zeros(bins, dtype=float)
+    last_value = 0.0
+    for idx in range(bins):
+        mask = (radius >= edges[idx]) & (radius < edges[idx + 1])
+        values = data[mask]
+        values = values[np.isfinite(values) & (values >= 0)]
+        if values.size:
+            last_value = float(np.nanmedian(values))
+        profile[idx] = last_value
+    return centers, profile
+
+
+def hybridize_injected_psf(psf: np.ndarray, fwhm_pix: float, beta: float = 4.5) -> np.ndarray:
+    empirical = circularize_psf(psf)
+    target_size = injection_stamp_size(fwhm_pix, empirical.shape[0])
+    padded_empirical = pad_psf(empirical, target_size)
+    analytic = moffat_kernel(fwhm_pix, beta=beta, size=target_size)
+
+    empirical_r, empirical_profile = radial_profile(empirical)
+    analytic_r, analytic_profile = radial_profile(analytic)
+    match_radius = min(max(2.5 * fwhm_pix, 3.0), 0.35 * (empirical.shape[0] - 1))
+    empirical_value = float(np.interp(match_radius, empirical_r, empirical_profile, left=empirical_profile[0], right=0.0))
+    analytic_value = float(np.interp(match_radius, analytic_r, analytic_profile, left=analytic_profile[0], right=0.0))
+    if analytic_value > 0 and empirical_value > 0:
+        analytic = analytic * (empirical_value / analytic_value)
+
+    ny, nx = analytic.shape
+    y, x = np.mgrid[:ny, :nx]
+    cy = 0.5 * (ny - 1)
+    cx = 0.5 * (nx - 1)
+    radius = np.hypot(x - cx, y - cy)
+    transition_start = max(2.5 * fwhm_pix, 0.28 * empirical.shape[0])
+    transition_end = max(transition_start + 2.0 * fwhm_pix, 0.42 * empirical.shape[0])
+    blend_phase = np.clip((radius - transition_start) / max(transition_end - transition_start, 1.0e-12), 0.0, 1.0)
+    blend_weight = blend_phase * blend_phase * (3.0 - 2.0 * blend_phase)
+
+    hybrid = (1.0 - blend_weight) * padded_empirical + blend_weight * analytic
+    hybrid[~np.isfinite(hybrid)] = 0.0
+    hybrid[hybrid < 0] = 0.0
+    hybrid = smooth_psf_wings(hybrid, taper_start_fraction=0.72)
+    total = float(np.sum(hybrid))
+    if total <= 0:
+        raise EmpiricalPSFError("hybrid injected PSF has non-positive total flux")
+    return hybrid / total
+
+
 def radial_edge_taper(shape: tuple[int, int], start_fraction: float = 0.68, boundary_width: float = 3.0) -> np.ndarray:
     ny, nx = shape
     y, x = np.mgrid[:ny, :nx]
@@ -318,7 +400,8 @@ def empirical_psf_from_field(
         exclude_xy=(x, y),
         exclude_radius=max(10.0, 3.0 * fwhm_pix),
     )
-    return build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=3)
+    kernel, used_coords, fluxes = build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=3)
+    return hybridize_injected_psf(kernel, fwhm_pix), used_coords, fluxes
 
 
 def shift_psf_to_subpixel(psf: np.ndarray, dx: float, dy: float) -> np.ndarray:
@@ -358,9 +441,14 @@ def inject_psf(data: np.ndarray, psf: np.ndarray, x: float, y: float, flux: floa
     return out
 
 
-def moffat_kernel(fwhm_pix: float, beta: float = 4.5) -> np.ndarray:
+def moffat_kernel(fwhm_pix: float, beta: float = 4.5, size: int | None = None) -> np.ndarray:
     alpha = fwhm_pix / (2.0 * math.sqrt(2.0 ** (1.0 / beta) - 1.0))
-    radius = int(max(6, math.ceil(3.0 * fwhm_pix)))
+    if size is not None:
+        if size % 2 == 0:
+            raise ValueError("Moffat kernel size must be odd")
+        radius = size // 2
+    else:
+        radius = int(max(6, math.ceil(3.0 * fwhm_pix)))
     y, x = np.mgrid[-radius : radius + 1, -radius : radius + 1]
     kernel = (1.0 + ((x / alpha) ** 2 + (y / alpha) ** 2)) ** (-beta)
     kernel[~np.isfinite(kernel)] = 0.0

@@ -238,7 +238,7 @@
     - Empirical PSF stacks now use a lightly smoothed radialized field-star profile, subtract the residual edge background, then apply a smooth raised-cosine taper that fades the wings to zero at the stamp boundary.
     - Subpixel PSF shifts use constant-background interpolation instead of FFT wrapping, preventing low-level stamp edges from wrapping into the injected source.
     - Added tests that verify bright artificial sources fade smoothly to zero without adding a rectangular floor.
-    - Added `tools/psf_diagnostics.py` to compare empirical PSF variants using contour maps and radial profiles.
+    - Added a PSF diagnostics script to compare empirical PSF variants using contour maps and radial profiles.
 
 39. Scaled inset ruler and corrected ruler labels.
     - The inset ruler now uses the largest 4 arcsec multiple below one-third of the inset FOV instead of a fixed 10 arcsec length.

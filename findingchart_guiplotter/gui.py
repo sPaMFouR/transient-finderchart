@@ -276,12 +276,15 @@ class MainWindow(QMainWindow):
         self.magnitude_spin.setValue(18.0)
         self.magnitude_spin.setDecimals(1)
         self.magnitude_spin.setSuffix(" mag")
+        self.psf_flux_mode_combo = QComboBox()
+        self.psf_flux_mode_combo.addItems(["catalog-calibrated", "visual fallback"])
         self.fwhm_spin = QDoubleSpinBox()
         self.fwhm_spin.setRange(0.1, 10.0)
         self.fwhm_spin.setValue(1.0)
         self.fwhm_spin.setSuffix(" arcsec")
         source_form.addRow(self.inject_check)
         source_form.addRow("Brightness / mag", self.magnitude_spin)
+        source_form.addRow("Flux mode", self.psf_flux_mode_combo)
         source_form.addRow("FWHM", self.fwhm_spin)
         return source_box
 
@@ -550,6 +553,7 @@ class MainWindow(QMainWindow):
             slit_pa_deg=requested_pa,
             slit_pa_mode="Fixed sky PA",
             psf_magnitude=self.magnitude_spin.value(),
+            psf_flux_mode=self.psf_flux_mode_combo.currentText(),
             psf_fwhm_arcsec=self.fwhm_spin.value(),
             show_injected_source=self.inject_check.isChecked(),
             show_crosshair=self.crosshair_check.isChecked(),

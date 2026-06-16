@@ -1,7 +1,14 @@
 import numpy as np
 import pytest
 
-from findingchart_guiplotter.empirical_psf import circularize_psf, inject_psf, radial_edge_taper, shift_psf_to_subpixel, smooth_psf_wings
+from findingchart_guiplotter.empirical_psf import (
+    circularize_psf,
+    hybridize_injected_psf,
+    inject_psf,
+    radial_edge_taper,
+    shift_psf_to_subpixel,
+    smooth_psf_wings,
+)
 
 
 def test_smooth_psf_wings_removes_edge_floor_but_keeps_core():
@@ -63,3 +70,20 @@ def test_inject_psf_fades_stamp_edges_to_zero():
     assert np.max(stamp[:, -1]) == 0.0
     assert stamp[5, 9] < stamp[5, 7] < stamp[5, 5]
     assert stamp[5, 5] > 0.0
+
+
+def test_hybrid_injected_psf_extends_support_and_stays_circular():
+    psf = np.zeros((31, 31))
+    psf[15, 15] = 1.0
+    psf[15, 18] = 0.2
+    psf[18, 15] = 0.05
+    psf = smooth_psf_wings(circularize_psf(psf), taper_start_fraction=0.42)
+    psf /= psf.sum()
+
+    hybrid = hybridize_injected_psf(psf, fwhm_pix=4.0)
+    cy = cx = hybrid.shape[0] // 2
+
+    assert hybrid.shape[0] > psf.shape[0]
+    assert hybrid.sum() == pytest.approx(1.0)
+    assert hybrid[cy, cx + 10] == pytest.approx(hybrid[cy + 10, cx], rel=0.02)
+    assert hybrid[cy, cx + 20] > 0.0

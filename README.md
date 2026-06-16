@@ -98,5 +98,6 @@ Without these variables, the app falls back to public TNS search where possible.
 - PA convention is degrees east of north.
 - Injected PSF is for visual finding-chart use, not calibrated photometry.
 - The web interface reuses the Python renderer and writes generated PNGs to `web_exports/`.
+- PSF diagnostics can be regenerated with `python3 tests/psf_diagnostics.py`, which writes plots to `tests/figures/`.
 - Legacy Survey FITS failures fall back to a JPEG cutout with approximate centered TAN WCS when possible.
 - See [docs/IMPLEMENTATION_LOG.md](docs/IMPLEMENTATION_LOG.md) for development history.

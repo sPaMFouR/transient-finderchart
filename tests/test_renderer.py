@@ -12,11 +12,13 @@ from findingchart_guiplotter.renderer import (
     apply_rgb_stretch,
     arcsec_label,
     estimate_catalog_flux_scale,
+    estimate_target_flux_by_mode,
     injected_reference_mag,
     magnitude_flux_scale,
     catalog_source_color,
     contrast_stretch,
     image_display_extent,
+    image_with_injected_psf,
     image_fov_arcsec,
     inset_source_box_arcsec,
     inset_axes_size_percent,
@@ -176,6 +178,70 @@ def test_catalog_flux_scale_uses_loaded_catalog_sources_as_zero_point():
     )
 
     assert flux == pytest.approx(10 ** (zero_point - 0.4 * 18.0), rel=0.05)
+
+
+def test_catalog_calibrated_mode_requires_catalog_zero_point():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((51, 51)),
+        wcs=centered_tan_wcs(target, nx=51, ny=51, pixscale_arcsec=1.0),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    flux = estimate_target_flux_by_mode(
+        image.data,
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, psf_flux_mode="catalog-calibrated"),
+        fwhm_pix=1.5,
+        mode="catalog-calibrated",
+    )
+
+    assert flux is None
+
+
+def test_visual_fallback_mode_produces_flux_without_catalog_sources():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.arange(51 * 51, dtype=float).reshape((51, 51)),
+        wcs=centered_tan_wcs(target, nx=51, ny=51, pixscale_arcsec=1.0),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    flux = estimate_target_flux_by_mode(
+        image.data,
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, psf_flux_mode="visual fallback"),
+        fwhm_pix=1.5,
+        mode="visual fallback",
+    )
+
+    assert flux is not None
+    assert flux > 0
+
+
+def test_catalog_calibrated_mode_skips_injection_without_catalog_scale():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((51, 51)),
+        wcs=centered_tan_wcs(target, nx=51, ny=51, pixscale_arcsec=1.0),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    injected = image_with_injected_psf(
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, psf_flux_mode="catalog-calibrated"),
+    )
+
+    assert np.array_equal(injected, image.data)
 
 
 def test_catalog_source_colors_distinguish_catalogs():
