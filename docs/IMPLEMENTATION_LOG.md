@@ -234,10 +234,10 @@
     - The VizieR fallback preserves magnitude, parallax, and proper-motion fields used by the blind-offset detail panel.
     - Verified a live Gaia DR3 fallback query around `SN 2023ixf` returned sources.
 
-38. Suppressed empirical PSF stamp-edge artifacts.
-    - Empirical PSF stacks now subtract the residual edge background and zero pixels below a 2-sigma edge-noise threshold before normalization.
+38. Smoothed empirical PSF stamp-edge artifacts.
+    - Empirical PSF stacks now subtract the residual edge background, then apply a smooth raised-cosine taper that fades the wings to zero at the stamp boundary.
     - Subpixel PSF shifts use constant-background interpolation instead of FFT wrapping, preventing low-level stamp edges from wrapping into the injected source.
-    - Added tests that verify the injected PSF does not add a rectangular floor around bright artificial sources.
+    - Added tests that verify bright artificial sources fade smoothly to zero without adding a rectangular floor.
 
 39. Scaled inset ruler and corrected ruler labels.
     - The inset ruler now uses the largest 4 arcsec multiple below one-third of the inset FOV instead of a fixed 10 arcsec length.

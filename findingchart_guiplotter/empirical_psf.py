@@ -216,19 +216,19 @@ def build_empirical_psf(
     stack = np.nanmedian(np.stack(normalized_stamps, axis=0), axis=0)
     stack[~np.isfinite(stack)] = 0.0
     stack[stack < 0] = 0.0
-    stack = suppress_psf_background(stack, background_mask=background_mask, threshold_sigma=2.0)
+    stack = smooth_psf_wings(stack, background_mask=background_mask)
     total = float(np.sum(stack))
     if total <= 0:
         raise EmpiricalPSFError("built empirical PSF has non-positive total flux")
     return stack / total, used_coords, np.asarray(raw_fluxes)
 
 
-def suppress_psf_background(
+def smooth_psf_wings(
     psf: np.ndarray,
     *,
     background_mask: np.ndarray | None = None,
     edge_width: int = 5,
-    threshold_sigma: float = 2.0,
+    taper_start_fraction: float = 0.68,
 ) -> np.ndarray:
     cleaned = np.array(psf, dtype=float, copy=True)
     cleaned[~np.isfinite(cleaned)] = 0.0
@@ -237,15 +237,35 @@ def suppress_psf_background(
         width = max(1, min(edge_width, min(cleaned.shape) // 2))
         background_mask = edge_mask(cleaned.shape, width)
     background_values = cleaned[background_mask & np.isfinite(cleaned)]
-    if background_values.size == 0:
-        return cleaned
-    _, background_level, background_std = sigma_clipped_stats(background_values, sigma=3.0, maxiters=5)
+    background_level = 0.0
+    if background_values.size:
+        _, background_level, _ = sigma_clipped_stats(background_values, sigma=3.0, maxiters=5)
     if np.isfinite(background_level) and background_level > 0:
         cleaned -= background_level
     cleaned[cleaned < 0] = 0.0
-    if np.isfinite(background_std) and background_std > 0:
-        cleaned[cleaned < threshold_sigma * background_std] = 0.0
-    return cleaned
+    return cleaned * radial_edge_taper(cleaned.shape, start_fraction=taper_start_fraction)
+
+
+def radial_edge_taper(shape: tuple[int, int], start_fraction: float = 0.68, boundary_width: float = 3.0) -> np.ndarray:
+    ny, nx = shape
+    y, x = np.mgrid[:ny, :nx]
+    cy = 0.5 * (ny - 1)
+    cx = 0.5 * (nx - 1)
+    radius = np.hypot(x - cx, y - cy)
+    max_radius = float(np.max(radius))
+    if max_radius <= 0:
+        return np.ones(shape, dtype=float)
+    start = max(0.0, min(float(start_fraction), 0.98)) * max_radius
+    taper = np.ones(shape, dtype=float)
+    edge = radius >= start
+    if np.any(edge):
+        phase = np.clip((radius[edge] - start) / max(max_radius - start, 1.0e-12), 0.0, 1.0)
+        taper[edge] = 0.5 * (1.0 + np.cos(np.pi * phase))
+    taper[radius >= max_radius] = 0.0
+    distance_to_boundary = np.minimum.reduce([x, y, nx - 1 - x, ny - 1 - y]).astype(float)
+    boundary_phase = np.clip(distance_to_boundary / max(float(boundary_width), 1.0e-12), 0.0, 1.0)
+    boundary_taper = boundary_phase * boundary_phase * (3.0 - 2.0 * boundary_phase)
+    return taper * boundary_taper
 
 
 def empirical_psf_from_field(
@@ -271,7 +291,7 @@ def empirical_psf_from_field(
 def shift_psf_to_subpixel(psf: np.ndarray, dx: float, dy: float) -> np.ndarray:
     shifted = ndi_shift(psf, shift=(dy, dx), order=3, mode="constant", cval=0.0, prefilter=True)
     shifted[shifted < 0] = 0.0
-    shifted = suppress_psf_background(shifted, threshold_sigma=2.0)
+    shifted = smooth_psf_wings(shifted)
     total = float(np.sum(shifted))
     if total <= 0:
         raise EmpiricalPSFError("subpixel-shifted PSF has non-positive flux")
