@@ -5,7 +5,9 @@ from findingchart_guiplotter.empirical_psf import (
     circularize_psf,
     hybridize_injected_psf,
     inject_psf,
+    normalize_psf_model,
     radial_edge_taper,
+    select_injected_psf_model,
     shift_psf_to_subpixel,
     smooth_psf_wings,
 )
@@ -87,3 +89,27 @@ def test_hybrid_injected_psf_extends_support_and_stays_circular():
     assert hybrid.sum() == pytest.approx(1.0)
     assert hybrid[cy, cx + 10] == pytest.approx(hybrid[cy + 10, cx], rel=0.02)
     assert hybrid[cy, cx + 20] > 0.0
+
+
+def test_psf_model_selection_defaults_to_empirical_core():
+    psf = np.zeros((31, 31))
+    psf[15, 15] = 1.0
+    psf /= psf.sum()
+
+    selected = select_injected_psf_model(psf, fwhm_pix=2.0, psf_model="unknown")
+
+    assert normalize_psf_model("unknown") == "empirical core"
+    assert selected.shape == psf.shape
+    assert selected[15, 15] == pytest.approx(psf[15, 15])
+
+
+def test_psf_model_selection_can_choose_moffat_or_hybrid():
+    psf = np.zeros((31, 31))
+    psf[15, 15] = 1.0
+    psf /= psf.sum()
+
+    moffat = select_injected_psf_model(psf, fwhm_pix=2.0, psf_model="moffat")
+    hybrid = select_injected_psf_model(psf, fwhm_pix=2.0, psf_model="empirical hybrid")
+
+    assert moffat.shape[0] > psf.shape[0]
+    assert hybrid.shape[0] > psf.shape[0]

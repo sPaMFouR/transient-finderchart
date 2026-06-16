@@ -361,6 +361,24 @@ def hybridize_injected_psf(psf: np.ndarray, fwhm_pix: float, beta: float = 4.5) 
     return hybrid / total
 
 
+def normalize_psf_model(psf_model: str) -> str:
+    mode = (psf_model or "empirical core").strip().lower()
+    if mode in {"hybrid", "empirical hybrid"}:
+        return "empirical hybrid"
+    if mode in {"moffat", "analytic moffat"}:
+        return "moffat"
+    return "empirical core"
+
+
+def select_injected_psf_model(psf: np.ndarray, fwhm_pix: float, psf_model: str) -> np.ndarray:
+    mode = normalize_psf_model(psf_model)
+    if mode == "empirical hybrid":
+        return hybridize_injected_psf(psf, fwhm_pix)
+    if mode == "moffat":
+        return moffat_kernel(fwhm_pix, size=injection_stamp_size(fwhm_pix, psf.shape[0]))
+    return np.array(psf, dtype=float, copy=True)
+
+
 def radial_edge_taper(shape: tuple[int, int], start_fraction: float = 0.68, boundary_width: float = 3.0) -> np.ndarray:
     ny, nx = shape
     y, x = np.mgrid[:ny, :nx]
@@ -390,6 +408,7 @@ def empirical_psf_from_field(
     *,
     fwhm_pix: float,
     threshold_sigma: float = 5.0,
+    psf_model: str = "empirical core",
 ) -> tuple[np.ndarray, list[tuple[float, float]], np.ndarray]:
     stamp_size = odd_stamp_size(fwhm_pix)
     coords, _, _ = detect_field_stars(
@@ -401,7 +420,7 @@ def empirical_psf_from_field(
         exclude_radius=max(10.0, 3.0 * fwhm_pix),
     )
     kernel, used_coords, fluxes = build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=3)
-    return hybridize_injected_psf(kernel, fwhm_pix), used_coords, fluxes
+    return select_injected_psf_model(kernel, fwhm_pix, psf_model), used_coords, fluxes
 
 
 def shift_psf_to_subpixel(psf: np.ndarray, dx: float, dy: float) -> np.ndarray:

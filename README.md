@@ -8,7 +8,7 @@
 
 Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts.
 
-![Template finding chart](docs/assets/findingchart_SN2024aecx.jpg)
+![Template finding chart](docs/assets/findingchartGUI_2024ggi.jpg)
 
 ## Features
 

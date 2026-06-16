@@ -18,7 +18,14 @@ from matplotlib.figure import Figure
 from matplotlib.patches import ConnectionPatch, Polygon, Rectangle
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from .empirical_psf import EmpiricalPSFError, empirical_psf_from_field, inject_psf, injection_stamp_size, moffat_kernel
+from .empirical_psf import (
+    EmpiricalPSFError,
+    empirical_psf_from_field,
+    inject_psf,
+    injection_stamp_size,
+    moffat_kernel,
+    normalize_psf_model,
+)
 from .mpl_compat import ensure_astropy_wcsaxes_compat
 from .models import ChartSettings, ImageData, Target
 
@@ -105,17 +112,11 @@ def image_display_extent(nx: int, ny: int) -> tuple[float, float, float, float]:
     return -0.5, nx - 0.5, -0.5, ny - 0.5
 
 
-def normalized_psf_flux_mode(settings: ChartSettings) -> str:
-    mode = (settings.psf_flux_mode or "catalog-calibrated").strip().lower()
-    if mode == "visual fallback":
-        return "visual fallback"
-    return "catalog-calibrated"
-
-
-def injection_reference_plane(data: np.ndarray) -> np.ndarray:
-    if data.ndim == 2:
-        return np.asarray(data, dtype=float)
-    return np.nanmean(np.asarray(data, dtype=float), axis=2)
+def pixel_artist_transform(ax):
+    try:
+        return ax.get_transform("pixel")
+    except Exception:
+        return ax.transData
 
 
 def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSettings) -> np.ndarray:
@@ -128,38 +129,19 @@ def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSet
     scale = pixel_scale_arcsec(image)
     fwhm_pix = max(settings.psf_fwhm_arcsec / scale, 1.0)
     fallback_size = injection_stamp_size(fwhm_pix, empirical_size=25)
-    flux_mode = normalized_psf_flux_mode(settings)
+    psf_model = normalize_psf_model(settings.psf_model)
     if data.ndim == 3:
+        total_flux = rgb_visual_flux(settings)
         kernel = moffat_kernel(fwhm_pix, size=fallback_size)
-        total_flux = estimate_target_flux_from_field(
-            injection_reference_plane(data),
-            image,
-            target,
-            settings,
-            fwhm_pix,
-            mode=flux_mode,
-        )
-        if total_flux is None:
-            return data
         for channel in range(data.shape[2]):
             data[..., channel] = np.clip(inject_psf(data[..., channel], kernel, x0, y0, total_flux), 0, 1)
         return data
     try:
-        kernel, _, psf_star_fluxes = empirical_psf_from_field(data, x0, y0, fwhm_pix=fwhm_pix)
+        kernel, _, psf_star_fluxes = empirical_psf_from_field(data, x0, y0, fwhm_pix=fwhm_pix, psf_model=psf_model)
+        total_flux = estimate_target_flux_from_field(data, image, target, settings, fwhm_pix, psf_star_fluxes)
     except (EmpiricalPSFError, ValueError, RuntimeError):
         kernel = moffat_kernel(fwhm_pix, size=fallback_size)
-        psf_star_fluxes = None
-    total_flux = estimate_target_flux_by_mode(
-        data,
-        image,
-        target,
-        settings,
-        fwhm_pix,
-        psf_star_fluxes=psf_star_fluxes,
-        mode=flux_mode,
-    )
-    if total_flux is None:
-        return data
+        total_flux = estimate_target_flux_from_field(data, image, target, settings, fwhm_pix)
     finite = data[np.isfinite(data)]
     fill = np.nanmedian(finite) if finite.size else 0.0
     return inject_psf(np.nan_to_num(data, nan=fill), kernel, x0, y0, total_flux)
@@ -184,39 +166,10 @@ def estimate_target_flux_from_field(
     settings: ChartSettings,
     fwhm_pix: float,
     psf_star_fluxes: np.ndarray | None = None,
-) -> float | None:
-    return estimate_target_flux_by_mode(
-        data,
-        image,
-        target,
-        settings,
-        fwhm_pix,
-        psf_star_fluxes=psf_star_fluxes,
-        mode=normalized_psf_flux_mode(settings),
-    )
-
-
-def estimate_target_flux_by_mode(
-    data: np.ndarray,
-    image: ImageData,
-    target: Target,
-    settings: ChartSettings,
-    fwhm_pix: float,
-    psf_star_fluxes: np.ndarray | None = None,
-    mode: str = "catalog-calibrated",
-) -> float | None:
-    if mode == "catalog-calibrated":
-        return estimate_catalog_flux_scale(data, image, target, settings, fwhm_pix)
-    return estimate_visual_fallback_flux(data, settings, psf_star_fluxes)
-
-
-def estimate_visual_fallback_flux(
-    data: np.ndarray,
-    settings: ChartSettings,
-    psf_star_fluxes: np.ndarray | None = None,
 ) -> float:
-    if data.ndim == 3:
-        return rgb_visual_flux(settings)
+    empirical_flux = estimate_catalog_flux_scale(data, image, target, settings, fwhm_pix)
+    if empirical_flux is not None:
+        return empirical_flux
     if psf_star_fluxes is not None and psf_star_fluxes.size:
         median_star_flux = float(np.nanmedian(psf_star_fluxes))
         if np.isfinite(median_star_flux) and median_star_flux > 0:
@@ -457,7 +410,23 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     y2 = min(ny, int(round(y0)) + half_size_pix + 1)
     if x2 - x1 < 4 or y2 - y1 < 4:
         return
-    ax.add_patch(Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, edgecolor="black", linewidth=0.5, alpha=0.85))
+    box_left = x1 - 0.5
+    box_right = x2 - 0.5
+    box_bottom = y1 - 0.5
+    box_top = y2 - 0.5
+    pixel_transform = pixel_artist_transform(ax)
+    ax.add_patch(
+        Rectangle(
+            (box_left, box_bottom),
+            box_right - box_left,
+            box_top - box_bottom,
+            transform=pixel_transform,
+            fill=False,
+            edgecolor="black",
+            linewidth=0.5,
+            alpha=0.65,
+        )
+    )
     
     nominal_box_size = 2 * half_size_pix + 1
     inset_width, inset_height = inset_axes_size_percent(nx, ny, nominal_box_size, nominal_box_size)
@@ -478,7 +447,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
         spine.set_edgecolor("black")
         spine.set_linewidth(0.6)
     inset._finding_chart_pixel_offset = (float(x1), float(y1))
-    connect_inset_to_source_box(ax, inset, x1, x2, y1, y2)
+    connect_inset_to_source_box(ax, inset, box_left, box_right, box_bottom, box_top)
     if settings.show_slit:
         draw_inset_slit(inset, image, target, settings, x1, y1)
     draw_catalog_sources_inset(inset, image, target, settings, x1, y1, stamp.shape[:2])
@@ -489,25 +458,65 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     draw_inset_sn_label(inset, target.label, local_x, local_y)
 
 
-def connect_inset_to_source_box(ax, inset, x1: int, x2: int, y1: int, y2: int) -> None:
+def connect_inset_to_source_box(
+    ax,
+    inset,
+    x1: float,
+    x2: float,
+    y1: float,
+    y2: float,
+) -> None:
+    # The inset is in the upper-right, so connect its LEFT edge
+    # to the RIGHT edge of the source box.
     pairs = [
-        ((0.0, 1.0), (x1, y2)),
-        ((1.0, 0.0), (x2, y1)),
+        ((0.0, 1.0), (x2, y2)),  # inset top-left -> box top-right
+        ((1.0, 0.0), (x2, y1)),  # inset bottom-left -> box bottom-right
     ]
-    for inset_xy, data_xy in pairs:
+
+    for inset_xy, box_xy in pairs:
         connection = ConnectionPatch(
             xyA=inset_xy,
-            coordsA=inset.transAxes,
-            xyB=data_xy,
-            coordsB=ax.transData,
+            coordsA="axes fraction",
             axesA=inset,
+            xyB=box_xy,
+            coordsB="data",
             axesB=ax,
+            arrowstyle="-",
+            connectionstyle="arc3",
             color="black",
-            lw=0.5,
+            linewidth=0.5,
             alpha=0.75,
             clip_on=False,
+            zorder=5,
         )
-        ax.add_artist(connection)
+
+        # Do not let layout calculations alter or suppress the connector.
+        connection.set_in_layout(False)
+
+        # A cross-Axes artist belongs to the Figure, not one of the Axes.
+        ax.figure.add_artist(connection)
+        
+    
+# def connect_inset_to_source_box(ax, inset, x1: float, x2: float, y1: float, y2: float) -> None:
+#     pixel_transform = pixel_artist_transform(ax)
+#     pairs = [
+#         ((0.0, 1.0), (x1, y2)),
+#         ((1.0, 0.0), (x2, y1)),
+#     ]
+#     for inset_xy, data_xy in pairs:
+#         connection = ConnectionPatch(
+#             xyA=inset_xy,
+#             coordsA=inset.transAxes,
+#             xyB=data_xy,
+#             coordsB=pixel_transform,
+#             axesA=inset,
+#             axesB=ax,
+#             color="black",
+#             lw=0.5,
+#             alpha=0.75,
+#             clip_on=False,
+#         )
+#         ax.add_artist(connection)
 
 
 def inset_axes_size_percent(nx: int, ny: int, box_width: int, box_height: int) -> tuple[float, float]:
@@ -589,7 +598,7 @@ def arcsec_label(length_arcsec: float) -> str:
 
 
 def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
-    inset.annotate(
+    annotation = inset.annotate(
         label,
         xy=(x, y),
         xycoords="data",
@@ -610,9 +619,15 @@ def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
         },
         bbox={"facecolor": "xkcd:white", "alpha": 0.5, "edgecolor": "xkcd:dark", "linewidth": 0.3, "pad": 0.3, "boxstyle": 'round',},
         annotation_clip=False,
-        zorder=20,
+        zorder=200,
         clip_on=False,
     )
+    annotation.set_zorder(200)
+    if annotation.arrow_patch is not None:
+        annotation.arrow_patch.set_zorder(201)
+    bbox_patch = annotation.get_bbox_patch()
+    if bbox_patch is not None:
+        bbox_patch.set_zorder(202)
     
     
 def draw_sn_marker(ax, image: ImageData, target: Target, settings: ChartSettings, x: float, y: float) -> None:
@@ -806,5 +821,5 @@ def export_chart(path: Path, image: ImageData, target: Target, settings: ChartSe
     fig = Figure(figsize=(7, 7))
     ax = fig.add_subplot(111, projection=image.wcs)
     draw_chart(ax, image, target, settings)
-    fig.subplots_adjust(left=0.12, right=0.96, bottom=0.14, top=0.90)
+    fig.subplots_adjust(left=0.08, right=0.985, bottom=0.08, top=0.94)
     fig.savefig(path, dpi=dpi)
