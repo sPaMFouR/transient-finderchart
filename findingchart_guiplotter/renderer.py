@@ -617,7 +617,7 @@ def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
             "shrinkA": 0,
             "shrinkB": 4,
         },
-        bbox={"facecolor": "xkcd:white", "alpha": 0.5, "edgecolor": "xkcd:dark", "linewidth": 0.3, "pad": 0.3, "boxstyle": 'round',},
+        bbox={"facecolor": "xkcd:white", "alpha": 0.75, "edgecolor": "xkcd:dark", "linewidth": 0.3, "pad": 0.3, "boxstyle": 'round',},
         annotation_clip=False,
         zorder=200,
         clip_on=False,

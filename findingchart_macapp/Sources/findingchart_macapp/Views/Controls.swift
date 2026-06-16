@@ -40,6 +40,28 @@ struct NumericSlider: View {
     }
 }
 
+struct NumericField: View {
+    let title: String
+    let unit: String
+    @Binding var value: Double
+    let digits: Int
+
+    var body: some View {
+        GridRow {
+            Text(title)
+                .font(AppFont.body(12))
+                .foregroundStyle(Palette.textSecondary)
+                .frame(width: 92, alignment: .leading)
+            TextField(title, value: $value, format: .number.precision(.fractionLength(0...digits)))
+                .textFieldStyle(.roundedBorder)
+            Text(unit)
+                .font(AppFont.mono(11))
+                .foregroundStyle(Palette.textTertiary)
+                .frame(width: 54, alignment: .leading)
+        }
+    }
+}
+
 struct LabeledToggle: View {
     let title: String
     @Binding var value: Bool

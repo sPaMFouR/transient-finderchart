@@ -184,11 +184,18 @@ def _image_request(payload: dict[str, Any]):
 
 def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
     from findingchart_guiplotter.image_fetchers import fetch_image
-    from findingchart_guiplotter.renderer import pixel_scale_arcsec
+    from findingchart_guiplotter.models import ChartSettings
+    from findingchart_guiplotter.renderer import contrast_limits, pixel_scale_arcsec
 
     target = _parse_target(payload)
     request = _image_request(payload)
     image = fetch_image(target, request)
+    guide_settings = ChartSettings(
+        auto_contrast=True,
+        contrast_percentile=float(payload.get("contrastPercentile") or 99.3),
+        contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
+    )
+    default_vmin, default_vmax = contrast_limits(image.data, guide_settings)
     cache_path = _state_dir(repo_dir) / f"{_safe_name(target.label)}_{_safe_name(image.survey)}_{_safe_name(image.band)}.pkl"
     with cache_path.open("wb") as handle:
         pickle.dump({"target": target, "request": request, "image": image}, handle)
@@ -202,6 +209,8 @@ def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
         "mode": image.mode,
         "sourceURL": image.source_url,
         "pixelScaleArcsec": pixel_scale_arcsec(image),
+        "defaultVmin": default_vmin,
+        "defaultVmax": default_vmax,
         "message": f"Loaded {image.survey} {image.band}",
     }
 
@@ -249,6 +258,7 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
         slit_pa_deg=slit_pa,
         slit_pa_mode="Parallactic Angle" if payload.get("useParallacticPA", False) else "Fixed sky PA",
         psf_magnitude=float(payload.get("psfMagnitude", 18.0)),
+        psf_model=str(payload.get("psfModel") or "empirical core"),
         psf_fwhm_arcsec=float(payload.get("psfFwhmArcsec", 1.0)),
         show_injected_source=bool(payload.get("showInjectedSource", True)),
         show_crosshair=bool(payload.get("showCrosshair", True)),
@@ -262,6 +272,8 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
         vmin=float(payload["vmin"]) if payload.get("vmin") not in (None, "") else None,
         vmax=float(payload["vmax"]) if payload.get("vmax") not in (None, "") else None,
         contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
+        contrast_percentile=float(payload.get("contrastPercentile") or 99.3),
+        inset_zoom_factor=float(payload.get("insetZoomFactor") or 6.0),
     )
 
 
@@ -288,6 +300,8 @@ def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, ex
         "target": _target_payload(target),
         "imagePath": str(output_path.resolve()),
         "imageCachePath": payload.get("imageCachePath"),
+        "defaultVmin": settings.vmin,
+        "defaultVmax": settings.vmax,
         "imageWidth": image_width,
         "imageHeight": image_height,
         "catalogCachePath": payload.get("catalogCachePath"),

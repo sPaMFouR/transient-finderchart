@@ -8,7 +8,8 @@ struct ControlSidebar: View {
             VStack(alignment: .leading, spacing: 14) {
                 targetSection
                 archiveImageSection
-                overlaySection
+                injectedSourceSection
+                contrastSection
                 slitSection
                 catalogSection
                 saveSection
@@ -46,42 +47,77 @@ struct ControlSidebar: View {
                 ForEach(vm.surveys, id: \.self) { Text($0).tag($0) }
             }
             .onChange(of: vm.params.survey) { _, _ in vm.reconcileBand() }
-            Picker("Mode", selection: $vm.params.mode) {
-                ForEach(vm.modes, id: \.self) { Text($0).tag($0) }
-            }
-            .onChange(of: vm.params.mode) { _, _ in vm.reconcileBand() }
-            Picker("Band", selection: $vm.params.band) {
-                ForEach(vm.bands, id: \.self) { Text($0).tag($0) }
+            Picker("Filter", selection: filterChoice) {
+                ForEach(vm.filterChoices, id: \.self) { Text($0).tag($0) }
             }
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-                NumericSlider(title: "Field", unit: "arcmin", value: $vm.params.sizeArcmin, range: 0.2...20.0, step: 0.1, digits: 1)
-                NumericSlider(title: "Pixel", unit: "\"/pix", value: $vm.params.pixelScaleArcsec, range: 0.05...2.0, step: 0.01, digits: 2)
+                NumericField(title: "Field", unit: "arcmin", value: $vm.params.sizeArcmin, digits: 2)
+                NumericField(title: "Pixel scale", unit: "\"/pix", value: $vm.params.pixelScaleArcsec, digits: 3)
             }
             ActionButton(title: "Load Image", systemName: "square.and.arrow.down", disabled: vm.isRunning, action: vm.loadImage)
         }
         .glassCard()
     }
 
-    private var overlaySection: some View {
+    private var injectedSourceSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(systemName: "slider.horizontal.3", title: "Overlays")
-            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-                NumericSlider(title: "Brightness / mag", unit: "mag", value: $vm.params.psfMagnitude, range: 10.0...22.0, step: 0.1, digits: 1)
-                NumericSlider(title: "FWHM", unit: "\"", value: $vm.params.psfFwhmArcsec, range: 0.2...5.0, step: 0.1, digits: 1)
-            }
+            SectionHeader(systemName: "sparkle.magnifyingglass", title: "Injected SN")
             LabeledToggle(title: "Injected SN", value: $vm.params.showInjectedSource)
-            LabeledToggle(title: "Crosshair", value: $vm.params.showCrosshair)
-            LabeledToggle(title: "Compass", value: $vm.params.showCompass)
-            Toggle("Auto contrast", isOn: $vm.params.autoContrast)
-                .toggleStyle(.checkbox)
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                NumericField(title: "Brightness", unit: "mag", value: $vm.params.psfMagnitude, digits: 1)
+                NumericField(title: "FWHM", unit: "\"", value: $vm.params.psfFwhmArcsec, digits: 2)
+                NumericSlider(title: "Inset zoom", unit: "x", value: $vm.params.insetZoomFactor, range: 3.0...12.0, step: 1.0, digits: 0)
+            }
+            Picker("PSF model", selection: $vm.params.psfModel) {
+                Text("empirical core").tag("empirical core")
+                Text("empirical hybrid").tag("empirical hybrid")
+                Text("moffat").tag("moffat")
+            }
         }
         .glassCard()
         .onChange(of: vm.params.psfMagnitude) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.psfModel) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.psfFwhmArcsec) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.insetZoomFactor) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.showInjectedSource) { _, _ in vm.scheduleLiveRender() }
+    }
+
+    private var contrastSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(systemName: "camera.filters", title: "Contrast")
+            Toggle("Auto contrast", isOn: $vm.params.autoContrast)
+                .toggleStyle(.checkbox)
+            Picker("Stretch", selection: $vm.params.contrastStretch) {
+                Text("arcsinh").tag("arcsinh")
+                Text("linear").tag("linear")
+                Text("sqrt").tag("sqrt")
+                Text("log").tag("log")
+            }
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                NumericSlider(title: "Contrast", unit: "%", value: $vm.params.contrastPercentile, range: 95.0...99.9, step: 0.1, digits: 1)
+            }
+            Text("Loaded-image arcsinh defaults prefill vmin/vmax; turn Auto off to use manual limits.")
+                .font(AppFont.body(10))
+                .foregroundStyle(Palette.textTertiary)
+            HStack {
+                TextField("vmin", value: $vm.params.vmin, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(vm.params.autoContrast)
+                TextField("vmax", value: $vm.params.vmax, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(vm.params.autoContrast)
+            }
+            LabeledToggle(title: "Crosshair", value: $vm.params.showCrosshair)
+            LabeledToggle(title: "Compass", value: $vm.params.showCompass)
+        }
+        .glassCard()
         .onChange(of: vm.params.showCrosshair) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.showCompass) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.autoContrast) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.contrastStretch) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.contrastPercentile) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.vmin) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.vmax) { _, _ in vm.scheduleLiveRender() }
     }
 
     private var slitSection: some View {
@@ -96,9 +132,9 @@ struct ControlSidebar: View {
                 .font(AppFont.body(12))
                 .foregroundStyle(Palette.textSecondary)
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-                NumericSlider(title: "Width", unit: "\"", value: $vm.params.slitWidthArcsec, range: 0.2...10.0, step: 0.1, digits: 1)
-                NumericSlider(title: "Length", unit: "\"", value: $vm.params.slitLengthArcsec, range: 2.0...120.0, step: 1.0, digits: 0)
-                NumericSlider(title: "PA", unit: "deg", value: $vm.params.slitPaDeg, range: 0.0...360.0, step: 1.0, digits: 0)
+                NumericField(title: "Width", unit: "\"", value: $vm.params.slitWidthArcsec, digits: 1)
+                NumericField(title: "Length", unit: "\"", value: $vm.params.slitLengthArcsec, digits: 0)
+                NumericField(title: "PA", unit: "deg", value: $vm.params.slitPaDeg, digits: 1)
             }
         }
         .glassCard()
@@ -203,6 +239,13 @@ struct ControlSidebar: View {
             set: { date in
                 vm.params.observationTimeISO = ISO8601DateFormatter().string(from: date)
             }
+        )
+    }
+
+    private var filterChoice: Binding<String> {
+        Binding(
+            get: { vm.selectedFilterChoice },
+            set: { vm.setFilterChoice($0) }
         )
     }
 }

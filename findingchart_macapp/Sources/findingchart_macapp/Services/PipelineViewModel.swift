@@ -24,12 +24,24 @@ final class PipelineViewModel: ObservableObject {
         metadata?.surveys ?? ["Pan-STARRS", "Legacy Survey", "DSS2", "2MASS"]
     }
 
-    var modes: [String] {
-        ["Single band", "Color composite"]
-    }
-
     var bands: [String] {
         metadata?.bands?[params.survey]?[params.mode] ?? ["g", "r", "i", "z", "y"]
+    }
+
+    var filterChoices: [String] {
+        var choices: [String] = []
+        if let colorBands = metadata?.bands?[params.survey]?["Color composite"], !colorBands.isEmpty {
+            choices.append("Color composite")
+        }
+        choices += metadata?.bands?[params.survey]?["Single band"] ?? ["g", "r", "i", "z", "y"]
+        return choices
+    }
+
+    var selectedFilterChoice: String {
+        if params.mode == "Color composite" {
+            return "Color composite"
+        }
+        return params.band
     }
 
     var observatories: [String] {
@@ -66,6 +78,12 @@ final class PipelineViewModel: ObservableObject {
             self.applyTarget(output.target)
             if let cache = output.imageCachePath {
                 self.params.imageCachePath = cache
+            }
+            if let vmin = output.defaultVmin {
+                self.params.vmin = vmin
+            }
+            if let vmax = output.defaultVmax {
+                self.params.vmax = vmax
             }
             self.result = output
             self.status = output.message ?? "Archive image loaded."
@@ -137,13 +155,40 @@ final class PipelineViewModel: ObservableObject {
     }
 
     func reconcileBand() {
-        let available = bands
-        if !available.contains(params.band), let first = available.first {
-            params.band = first
-        }
+        setFilterChoice(preferredFilterChoice(for: params.survey), resetImage: false)
         params.imageCachePath = ""
         params.catalogCachePath = ""
         params.selectedCatalogSourceID = ""
+    }
+
+    func setFilterChoice(_ choice: String, resetImage: Bool = true) {
+        if choice == "Color composite", let band = metadata?.bands?[params.survey]?["Color composite"]?.first {
+            params.mode = "Color composite"
+            params.band = band
+        } else {
+            let singles = metadata?.bands?[params.survey]?["Single band"] ?? filterChoices.filter { $0 != "Color composite" }
+            params.mode = "Single band"
+            params.band = singles.contains(choice) ? choice : (singles.first ?? choice)
+        }
+        if resetImage {
+            params.imageCachePath = ""
+            params.catalogCachePath = ""
+            params.selectedCatalogSourceID = ""
+        }
+    }
+
+    private func preferredFilterChoice(for survey: String) -> String {
+        let preferred = [
+            "Pan-STARRS": "r",
+            "Legacy Survey": "r",
+            "DSS2": "red",
+            "2MASS": "J",
+        ][survey] ?? ""
+        let choices = filterChoices
+        if choices.contains(preferred) {
+            return preferred
+        }
+        return choices.first ?? params.band
     }
 
     private func export(action: String, statusText: String) {
@@ -205,6 +250,8 @@ final class PipelineViewModel: ObservableObject {
             slitPaDeg: existing?.slitPaDeg,
             message: output.message,
             imageCachePath: output.imageCachePath ?? existing?.imageCachePath,
+            defaultVmin: output.defaultVmin ?? existing?.defaultVmin,
+            defaultVmax: output.defaultVmax ?? existing?.defaultVmax,
             imageWidth: output.imageWidth ?? existing?.imageWidth,
             imageHeight: output.imageHeight ?? existing?.imageHeight,
             catalogCachePath: output.catalogCachePath,

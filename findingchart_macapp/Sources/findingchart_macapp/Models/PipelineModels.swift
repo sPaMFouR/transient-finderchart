@@ -15,7 +15,9 @@ struct PipelineParams: Codable, Equatable {
     var pixelScaleArcsec: Double = 0.262
 
     var psfMagnitude: Double = 18.0
+    var psfModel: String = "empirical core"
     var psfFwhmArcsec: Double = 1.0
+    var insetZoomFactor: Double = 6.0
     var showInjectedSource: Bool = true
     var showCrosshair: Bool = true
     var showSlit: Bool = false
@@ -39,6 +41,7 @@ struct PipelineParams: Codable, Equatable {
     var vmin: Double? = nil
     var vmax: Double? = nil
     var contrastStretch: String = "arcsinh"
+    var contrastPercentile: Double = 99.3
 }
 
 struct PipelineResult: Codable {
@@ -56,6 +59,8 @@ struct PipelineResult: Codable {
     var slitPaDeg: Double?
     var message: String?
     var imageCachePath: String?
+    var defaultVmin: Double?
+    var defaultVmax: Double?
     var imageWidth: Int?
     var imageHeight: Int?
     var catalogCachePath: String?
