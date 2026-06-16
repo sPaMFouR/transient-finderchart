@@ -234,6 +234,11 @@
     - The VizieR fallback preserves magnitude, parallax, and proper-motion fields used by the blind-offset detail panel.
     - Verified a live Gaia DR3 fallback query around `SN 2023ixf` returned sources.
 
+38. Suppressed empirical PSF stamp-edge artifacts.
+    - Empirical PSF stacks now subtract the residual edge background and zero pixels below a 2-sigma edge-noise threshold before normalization.
+    - Subpixel PSF shifts use constant-background interpolation instead of FFT wrapping, preventing low-level stamp edges from wrapping into the injected source.
+    - Added tests that verify the injected PSF does not add a rectangular floor around bright artificial sources.
+
 ## Known next steps
 
 1. Add archive coverage checks that enable/highlight survey tabs before image loading.

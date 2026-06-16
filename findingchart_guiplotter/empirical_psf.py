@@ -7,9 +7,7 @@ import numpy as np
 from astropy.stats import sigma_clipped_stats
 from scipy.ndimage import center_of_mass, maximum_filter
 from scipy.ndimage import shift as ndi_shift
-from scipy.ndimage import fourier_shift
 from scipy.spatial import cKDTree
-from numpy.fft import fftn, ifftn
 
 try:
     from photutils.detection import DAOStarFinder
@@ -218,10 +216,36 @@ def build_empirical_psf(
     stack = np.nanmedian(np.stack(normalized_stamps, axis=0), axis=0)
     stack[~np.isfinite(stack)] = 0.0
     stack[stack < 0] = 0.0
+    stack = suppress_psf_background(stack, background_mask=background_mask, threshold_sigma=2.0)
     total = float(np.sum(stack))
     if total <= 0:
         raise EmpiricalPSFError("built empirical PSF has non-positive total flux")
     return stack / total, used_coords, np.asarray(raw_fluxes)
+
+
+def suppress_psf_background(
+    psf: np.ndarray,
+    *,
+    background_mask: np.ndarray | None = None,
+    edge_width: int = 5,
+    threshold_sigma: float = 2.0,
+) -> np.ndarray:
+    cleaned = np.array(psf, dtype=float, copy=True)
+    cleaned[~np.isfinite(cleaned)] = 0.0
+    cleaned[cleaned < 0] = 0.0
+    if background_mask is None:
+        width = max(1, min(edge_width, min(cleaned.shape) // 2))
+        background_mask = edge_mask(cleaned.shape, width)
+    background_values = cleaned[background_mask & np.isfinite(cleaned)]
+    if background_values.size == 0:
+        return cleaned
+    _, background_level, background_std = sigma_clipped_stats(background_values, sigma=3.0, maxiters=5)
+    if np.isfinite(background_level) and background_level > 0:
+        cleaned -= background_level
+    cleaned[cleaned < 0] = 0.0
+    if np.isfinite(background_std) and background_std > 0:
+        cleaned[cleaned < threshold_sigma * background_std] = 0.0
+    return cleaned
 
 
 def empirical_psf_from_field(
@@ -245,8 +269,9 @@ def empirical_psf_from_field(
 
 
 def shift_psf_to_subpixel(psf: np.ndarray, dx: float, dy: float) -> np.ndarray:
-    shifted = ifftn(fourier_shift(fftn(psf), shift=(dy, dx))).real
+    shifted = ndi_shift(psf, shift=(dy, dx), order=3, mode="constant", cval=0.0, prefilter=True)
     shifted[shifted < 0] = 0.0
+    shifted = suppress_psf_background(shifted, threshold_sigma=2.0)
     total = float(np.sum(shifted))
     if total <= 0:
         raise EmpiricalPSFError("subpixel-shifted PSF has non-positive flux")
