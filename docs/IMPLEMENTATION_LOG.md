@@ -239,6 +239,11 @@
     - Subpixel PSF shifts use constant-background interpolation instead of FFT wrapping, preventing low-level stamp edges from wrapping into the injected source.
     - Added tests that verify the injected PSF does not add a rectangular floor around bright artificial sources.
 
+39. Scaled inset ruler and corrected ruler labels.
+    - The inset ruler now uses the largest 4 arcsec multiple below one-third of the inset FOV instead of a fixed 10 arcsec length.
+    - Moved the inset ruler to the top center and doubled the inset crosshair line width.
+    - The main 60 arcsec ruler now labels as `1'` instead of `1"`.
+
 ## Known next steps
 
 1. Add archive coverage checks that enable/highlight survey tabs before image loading.

@@ -457,14 +457,15 @@ def draw_inset_marker(
 ) -> None:
     inner = max(6.0, 0.9 / scale)
     outer = max(inner + 8.0, 4.1 / scale)
-    draw_crosshair_segments(inset, x, y, marker_unit_vectors(image, target), inner, outer, color=CROSSHAIR_COLOR, linewidth=0.6)
+    draw_crosshair_segments(inset, x, y, marker_unit_vectors(image, target), inner, outer, color=CROSSHAIR_COLOR, linewidth=1.2)
 
 
 def draw_inset_scalebar(inset, scale: float, shape: tuple[int, int]) -> None:
     ny, nx = shape
-    length_pix = 10.0 / scale
-    x0 = 0.62 * nx
-    y0 = 0.08 * ny
+    length_arcsec = inset_scalebar_length_arcsec(scale, shape)
+    length_pix = length_arcsec / scale
+    x0 = 0.5 * (nx - length_pix)
+    y0 = 0.88 * ny
     tick = 1
     inset.plot([x0, x0 + length_pix], [y0, y0], color=SLIT_COLOR, lw=1.2)
     inset.plot([x0, x0], [y0 - tick, y0 + tick], color=SLIT_COLOR, lw=0.8)
@@ -472,14 +473,33 @@ def draw_inset_scalebar(inset, scale: float, shape: tuple[int, int]) -> None:
     
     inset.text(
         x0 + 0.5 * length_pix,
-        y0 + 3,
-        '10"',
+        y0 - 3,
+        arcsec_label(length_arcsec),
         color=SLIT_COLOR,
         ha="center",
-        va="bottom",
+        va="top",
         fontsize=7,
         # bbox={"facecolor": "black", "alpha": 0.4, "edgecolor": "none", "pad": 1.0},
     )
+
+
+def inset_scalebar_length_arcsec(scale: float, shape: tuple[int, int]) -> float:
+    ny, nx = shape
+    inset_fov_arcsec = min(nx, ny) * scale
+    upper_limit = inset_fov_arcsec / 3.0
+    if not np.isfinite(upper_limit) or upper_limit <= 0:
+        return 4.0
+    if upper_limit < 4.0:
+        return max(1.0, math.floor(upper_limit))
+    return max(4.0, 4.0 * math.floor(upper_limit / 4.0))
+
+
+def arcsec_label(length_arcsec: float) -> str:
+    if abs(length_arcsec - 60.0) < 1e-6:
+        return "1'"
+    if abs(length_arcsec % 60.0) < 1e-6:
+        return f"{length_arcsec / 60.0:.0f}'"
+    return f'{length_arcsec:.0f}"'
 
 
 def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
@@ -594,7 +614,7 @@ def draw_scale_ruler(ax, image: ImageData, length_arcsec: float) -> None:
     ax.text(
         center_x,
         center_y + 2.5 * tick,
-        '1"' if abs(length_arcsec - 60.0) < 1e-6 else f'{length_arcsec:.0f}"',
+        arcsec_label(length_arcsec),
         color=SLIT_COLOR,
         fontsize=9,
         weight="bold",

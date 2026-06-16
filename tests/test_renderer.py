@@ -8,11 +8,13 @@ from findingchart_guiplotter.models import ImageData, Target
 from findingchart_guiplotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
     INSET_SOURCE_BOX_FOV_FRACTION,
+    arcsec_label,
     catalog_source_color,
     image_display_extent,
     image_fov_arcsec,
     inset_source_box_arcsec,
     inset_axes_size_percent,
+    inset_scalebar_length_arcsec,
     marker_unit_vectors,
     world_to_scalar_pixel,
 )
@@ -91,6 +93,17 @@ def test_inset_source_box_uses_smaller_dimension_for_rectangular_images():
 
     assert image_fov_arcsec(image) == pytest.approx(240.0)
     assert inset_source_box_arcsec(image) == pytest.approx(40.0)
+
+
+def test_inset_scalebar_length_stays_below_third_fov_multiple_of_four():
+    assert inset_scalebar_length_arcsec(scale=1.0, shape=(90, 120)) == pytest.approx(28.0)
+    assert inset_scalebar_length_arcsec(scale=0.5, shape=(60, 80)) == pytest.approx(8.0)
+
+
+def test_arcsec_label_formats_arcminutes():
+    assert arcsec_label(60.0) == "1'"
+    assert arcsec_label(120.0) == "2'"
+    assert arcsec_label(28.0) == '28"'
 
 
 def test_catalog_source_colors_distinguish_catalogs():
