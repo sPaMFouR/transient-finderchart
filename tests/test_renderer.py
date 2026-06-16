@@ -4,12 +4,14 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 
 from findingchart_guiplotter.image_fetchers import centered_tan_wcs
-from findingchart_guiplotter.models import ImageData, Target
+from findingchart_guiplotter.models import ChartSettings, ImageData, Target
 from findingchart_guiplotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
     INSET_SOURCE_BOX_FOV_FRACTION,
+    apply_rgb_stretch,
     arcsec_label,
     catalog_source_color,
+    contrast_stretch,
     image_display_extent,
     image_fov_arcsec,
     inset_source_box_arcsec,
@@ -104,6 +106,23 @@ def test_arcsec_label_formats_arcminutes():
     assert arcsec_label(60.0) == "1'"
     assert arcsec_label(120.0) == "2'"
     assert arcsec_label(28.0) == '28"'
+
+
+def test_contrast_stretch_defaults_to_arcsinh_and_selects_modes():
+    assert contrast_stretch(ChartSettings()).__class__.__name__ == "AsinhStretch"
+    assert contrast_stretch(ChartSettings(contrast_stretch="linear")).__class__.__name__ == "LinearStretch"
+    assert contrast_stretch(ChartSettings(contrast_stretch="sqrt")).__class__.__name__ == "SqrtStretch"
+    assert contrast_stretch(ChartSettings(contrast_stretch="log")).__class__.__name__ == "LogStretch"
+
+
+def test_apply_rgb_stretch_preserves_shape_and_bounds():
+    data = np.linspace(0, 1, 27).reshape((3, 3, 3))
+
+    stretched = apply_rgb_stretch(data, ChartSettings(contrast_stretch="sqrt"))
+
+    assert stretched.shape == data.shape
+    assert np.nanmin(stretched) >= 0.0
+    assert np.nanmax(stretched) <= 1.0
 
 
 def test_catalog_source_colors_distinguish_catalogs():

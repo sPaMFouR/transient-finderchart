@@ -244,6 +244,11 @@
     - Moved the inset ruler to the top center and doubled the inset crosshair line width.
     - The main 60 arcsec ruler now labels as `1'` instead of `1"`.
 
+40. Added contrast stretch controls.
+    - The first-tab contrast controls now include a stretch selector with `arcsinh` as the default.
+    - Supported stretches are `arcsinh`, `linear`, `sqrt`, and `log`.
+    - The selected stretch is applied to both single-band grayscale images and color composites.
+
 ## Known next steps
 
 1. Add archive coverage checks that enable/highlight survey tabs before image loading.

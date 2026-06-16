@@ -38,6 +38,7 @@ struct PipelineParams: Codable, Equatable {
     var autoContrast: Bool = true
     var vmin: Double? = nil
     var vmax: Double? = nil
+    var contrastStretch: String = "arcsinh"
 }
 
 struct PipelineResult: Codable {

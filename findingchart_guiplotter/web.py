@@ -107,6 +107,7 @@ def render_from_payload(payload: dict) -> str:
         show_injected_source=payload_bool(payload, "show_injected_source", True),
         show_crosshair=payload_bool(payload, "show_crosshair", True),
         show_compass=payload_bool(payload, "show_compass", True),
+        contrast_stretch=str(payload.get("contrast_stretch") or "arcsinh"),
         catalog_sources=catalog_sources,
     )
     WEB_OUTPUT_DIR.mkdir(exist_ok=True)
@@ -188,6 +189,7 @@ INDEX_HTML = """<!doctype html>
           <label>Survey <select name="survey"><option>Pan-STARRS</option><option>Legacy Survey</option><option>DSS2</option><option>2MASS</option></select></label>
           <label>Mode <select name="mode"><option>Single band</option><option>Color composite</option></select></label>
           <label>Band <input name="band" value="r"></label>
+          <label>Stretch <select name="contrast_stretch"><option>arcsinh</option><option>linear</option><option>sqrt</option><option>log</option></select></label>
           <div class="row">
             <label>Field arcmin <input name="size_arcmin" value="3.0"></label>
             <label>Pixscale <input name="pixel_scale_arcsec" value="0.262"></label>

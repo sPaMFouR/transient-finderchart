@@ -72,3 +72,4 @@ class ChartSettings:
     auto_contrast: bool = True
     vmin: float | None = None
     vmax: float | None = None
+    contrast_stretch: str = "arcsinh"

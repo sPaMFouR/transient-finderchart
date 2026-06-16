@@ -261,6 +261,7 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
         auto_contrast=bool(payload.get("autoContrast", True)),
         vmin=float(payload["vmin"]) if payload.get("vmin") not in (None, "") else None,
         vmax=float(payload["vmax"]) if payload.get("vmax") not in (None, "") else None,
+        contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
     )
 
 

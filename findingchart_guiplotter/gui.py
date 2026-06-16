@@ -241,6 +241,9 @@ class MainWindow(QMainWindow):
         contrast_form = QFormLayout(contrast_box)
         self.auto_contrast_check = QCheckBox("Auto")
         self.auto_contrast_check.setChecked(True)
+        self.stretch_combo = QComboBox()
+        self.stretch_combo.addItems(["arcsinh", "linear", "sqrt", "log"])
+        self.stretch_combo.setCurrentText("arcsinh")
         self.vmin_spin = QDoubleSpinBox()
         self.vmin_spin.setRange(-1.0e12, 1.0e12)
         self.vmin_spin.setDecimals(4)
@@ -253,6 +256,7 @@ class MainWindow(QMainWindow):
         self.reset_contrast_button.clicked.connect(self.reset_contrast_from_image)
         self.auto_contrast_check.stateChanged.connect(self.toggle_contrast_controls)
         contrast_form.addRow(self.auto_contrast_check)
+        contrast_form.addRow("Stretch", self.stretch_combo)
         contrast_form.addRow("vmin", self.vmin_spin)
         contrast_form.addRow("vmax", self.vmax_spin)
         contrast_form.addRow(self.reset_contrast_button)
@@ -435,6 +439,7 @@ class MainWindow(QMainWindow):
                 widget.valueChanged.connect(self.update_chart_from_controls)
             else:
                 widget.stateChanged.connect(self.update_chart_from_controls)
+        self.stretch_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.observatory_combo.currentTextChanged.connect(self.update_pa_from_mode)
         self.datetime_edit.dateTimeChanged.connect(self.update_pa_from_mode)
         return page
@@ -556,6 +561,7 @@ class MainWindow(QMainWindow):
             auto_contrast=self.auto_contrast_check.isChecked(),
             vmin=self.vmin_spin.value(),
             vmax=self.vmax_spin.value(),
+            contrast_stretch=self.stretch_combo.currentText(),
         )
 
     def update_chart_from_controls(self) -> None:

@@ -12,7 +12,7 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.coordinates import SkyCoord
-from astropy.visualization import AsinhStretch, ImageNormalize, PercentileInterval
+from astropy.visualization import AsinhStretch, ImageNormalize, LinearStretch, LogStretch, PercentileInterval, SqrtStretch
 from astropy.wcs.utils import proj_plane_pixel_scales
 from matplotlib.figure import Figure
 from matplotlib.patches import ConnectionPatch, Polygon, Rectangle
@@ -242,11 +242,12 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
     if data.ndim == 3:
         if not settings.auto_contrast and settings.vmax is not None and settings.vmin is not None and settings.vmax > settings.vmin:
             data = np.clip((data - settings.vmin) / (settings.vmax - settings.vmin), 0, 1)
+        data = apply_rgb_stretch(data, settings)
         norm = None
         ax.imshow(np.clip(data, 0, 1), origin="lower", extent=extent)
     else:
         vmin, vmax = contrast_limits(original, settings)
-        norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=AsinhStretch())
+        norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=contrast_stretch(settings))
         ax.imshow(data, origin="lower", cmap="gray_r", norm=norm, extent=extent)
     ax.set_xlim(extent[0], extent[1])
     ax.set_ylim(extent[2], extent[3])
@@ -288,6 +289,23 @@ def contrast_limits(data: np.ndarray, settings: ChartSettings) -> tuple[float, f
         interval = PercentileInterval(99.3)
         return tuple(float(value) for value in interval.get_limits(finite))
     return 0.0, 1.0
+
+
+def contrast_stretch(settings: ChartSettings):
+    stretch = (settings.contrast_stretch or "arcsinh").strip().lower()
+    if stretch in {"linear", "none"}:
+        return LinearStretch()
+    if stretch in {"sqrt", "square root"}:
+        return SqrtStretch()
+    if stretch in {"log", "logarithmic"}:
+        return LogStretch()
+    return AsinhStretch()
+
+
+def apply_rgb_stretch(data: np.ndarray, settings: ChartSettings) -> np.ndarray:
+    stretch = contrast_stretch(settings)
+    clipped = np.clip(np.nan_to_num(data, nan=0.0), 0, 1)
+    return np.asarray(stretch(clipped), dtype=float)
 
 
 def chart_title(image: ImageData, target: Target) -> str:
