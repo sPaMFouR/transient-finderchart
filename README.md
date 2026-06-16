@@ -2,7 +2,8 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](pyproject.toml)
 [![Qt GUI](https://img.shields.io/badge/GUI-PySide6%20%2F%20PyQt6-green.svg)](findingchart_guiplotter/qt_compat.py)
-[![Astropy](https://img.shields.io/badge/astro-Astropy-purple.svg)](https://www.astropy.org/)
+[![macOS SwiftUI](https://img.shields.io/badge/macOS-SwiftUI-black.svg)](findingchart_macapp)
+[![Astropy](https://img.shields.io/badge/Astropy-5A2CA0.svg)](https://www.astropy.org/)
 [![Tests](https://img.shields.io/badge/tests-23%20passed-brightgreen.svg)](tests)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
