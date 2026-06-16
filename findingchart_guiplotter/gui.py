@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget()
         tabs.setMaximumWidth(410)
         tabs.addTab(self._build_target_archive_tab(), "Target / Archive")
-        tabs.addTab(self._build_chart_catalog_tab(), "Chart / Catalog")
+        tabs.addTab(self._build_chart_catalog_tab(), "Slit / Catalog")
         return tabs
 
     def _build_target_archive_tab(self) -> QWidget:
