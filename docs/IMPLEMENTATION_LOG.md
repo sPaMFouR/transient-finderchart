@@ -235,9 +235,10 @@
     - Verified a live Gaia DR3 fallback query around `SN 2023ixf` returned sources.
 
 38. Smoothed empirical PSF stamp-edge artifacts.
-    - Empirical PSF stacks now subtract the residual edge background, then apply a smooth raised-cosine taper that fades the wings to zero at the stamp boundary.
+    - Empirical PSF stacks now use a lightly smoothed radialized field-star profile, subtract the residual edge background, then apply a smooth raised-cosine taper that fades the wings to zero at the stamp boundary.
     - Subpixel PSF shifts use constant-background interpolation instead of FFT wrapping, preventing low-level stamp edges from wrapping into the injected source.
     - Added tests that verify bright artificial sources fade smoothly to zero without adding a rectangular floor.
+    - Added `tools/psf_diagnostics.py` to compare empirical PSF variants using contour maps and radial profiles.
 
 39. Scaled inset ruler and corrected ruler labels.
     - The inset ruler now uses the largest 4 arcsec multiple below one-third of the inset FOV instead of a fixed 10 arcsec length.
@@ -248,6 +249,11 @@
     - The first-tab contrast controls now include a stretch selector with `arcsinh` as the default.
     - Supported stretches are `arcsinh`, `linear`, `sqrt`, and `log`.
     - The selected stretch is applied to both single-band grayscale images and color composites.
+
+41. Restored explicit injected-source magnitude control.
+    - The injected-source control is now labeled `Brightness / mag` and uses a direct 10-22 mag range with a default of 18 mag.
+    - Injection flux now prefers a catalog-derived zero point from queried field stars when Gaia or Pan-STARRS sources are available in the chart.
+    - If no catalog stars are loaded, the renderer falls back to empirical field-star fluxes and then image statistics for a reasonable visual injection.
 
 ## Known next steps
 

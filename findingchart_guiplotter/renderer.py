@@ -132,11 +132,15 @@ def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSet
 
 
 def rgb_visual_flux(settings: ChartSettings) -> float:
-    return 0.08 * brightness_flux_scale(settings)
+    return 0.08 * magnitude_flux_scale(settings.psf_magnitude, reference_mag=18.0)
 
 
-def brightness_flux_scale(settings: ChartSettings) -> float:
-    return 10 ** ((settings.psf_brightness - 5.0) / 2.5)
+def magnitude_flux_scale(magnitude: float, reference_mag: float = 18.0) -> float:
+    return 10 ** (-0.4 * (magnitude - reference_mag))
+
+
+def injected_reference_mag(settings: ChartSettings) -> float:
+    return float(settings.psf_magnitude)
 
 
 def estimate_target_flux_from_field(
@@ -147,20 +151,20 @@ def estimate_target_flux_from_field(
     fwhm_pix: float,
     psf_star_fluxes: np.ndarray | None = None,
 ) -> float:
-    if psf_star_fluxes is not None and psf_star_fluxes.size:
-        median_star_flux = float(np.nanmedian(psf_star_fluxes))
-        if np.isfinite(median_star_flux) and median_star_flux > 0:
-            relative_flux = 0.25 * brightness_flux_scale(settings)
-            return max(relative_flux * median_star_flux, 1.0)
     empirical_flux = estimate_catalog_flux_scale(data, image, target, settings, fwhm_pix)
     if empirical_flux is not None:
         return empirical_flux
+    if psf_star_fluxes is not None and psf_star_fluxes.size:
+        median_star_flux = float(np.nanmedian(psf_star_fluxes))
+        if np.isfinite(median_star_flux) and median_star_flux > 0:
+            relative_flux = 0.25 * magnitude_flux_scale(settings.psf_magnitude, reference_mag=18.0)
+            return max(relative_flux * median_star_flux, 1.0)
     finite = data[np.isfinite(data)]
     if finite.size == 0:
         return 1.0
     p50, p99 = np.nanpercentile(finite, [50, 99])
     peak = max(p99 - p50, np.nanstd(finite), 1.0)
-    return max(peak * brightness_flux_scale(settings), 1.0)
+    return max(peak * magnitude_flux_scale(settings.psf_magnitude, reference_mag=18.0), 1.0)
 
 
 def estimate_catalog_flux_scale(
@@ -211,7 +215,7 @@ def estimate_catalog_flux_scale(
         return None
     zero_points = [math.log10(flux) + 0.4 * mag for mag, flux in usable]
     zero_point = float(np.nanmedian(zero_points))
-    reference_mag = 18.0 - (settings.psf_brightness - 5.0)
+    reference_mag = injected_reference_mag(settings)
     return max(10 ** (zero_point - 0.4 * reference_mag), 1.0)
 
 

@@ -271,16 +271,17 @@ class MainWindow(QMainWindow):
         source_form = QFormLayout(source_box)
         self.inject_check = QCheckBox("Show empirical PSF")
         self.inject_check.setChecked(True)
-        self.brightness_spin = QDoubleSpinBox()
-        self.brightness_spin.setRange(0.0, 10.0)
-        self.brightness_spin.setValue(5.0)
-        self.brightness_spin.setDecimals(1)
+        self.magnitude_spin = QDoubleSpinBox()
+        self.magnitude_spin.setRange(10.0, 22.0)
+        self.magnitude_spin.setValue(18.0)
+        self.magnitude_spin.setDecimals(1)
+        self.magnitude_spin.setSuffix(" mag")
         self.fwhm_spin = QDoubleSpinBox()
         self.fwhm_spin.setRange(0.1, 10.0)
         self.fwhm_spin.setValue(1.0)
         self.fwhm_spin.setSuffix(" arcsec")
         source_form.addRow(self.inject_check)
-        source_form.addRow("Brightness", self.brightness_spin)
+        source_form.addRow("Brightness / mag", self.magnitude_spin)
         source_form.addRow("FWHM", self.fwhm_spin)
         return source_box
 
@@ -425,7 +426,7 @@ class MainWindow(QMainWindow):
             self.pa_spin,
             self.width_spin,
             self.length_spin,
-            self.brightness_spin,
+            self.magnitude_spin,
             self.fwhm_spin,
             self.vmin_spin,
             self.vmax_spin,
@@ -548,7 +549,7 @@ class MainWindow(QMainWindow):
             slit_length_arcsec=self.length_spin.value(),
             slit_pa_deg=requested_pa,
             slit_pa_mode="Fixed sky PA",
-            psf_brightness=self.brightness_spin.value(),
+            psf_magnitude=self.magnitude_spin.value(),
             psf_fwhm_arcsec=self.fwhm_spin.value(),
             show_injected_source=self.inject_check.isChecked(),
             show_crosshair=self.crosshair_check.isChecked(),

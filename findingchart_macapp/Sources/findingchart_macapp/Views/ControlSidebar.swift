@@ -66,7 +66,7 @@ struct ControlSidebar: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(systemName: "slider.horizontal.3", title: "Overlays")
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
-                NumericSlider(title: "SN flux", unit: "", value: $vm.params.psfBrightness, range: 0.0...10.0, step: 0.1, digits: 1)
+                NumericSlider(title: "Brightness / mag", unit: "mag", value: $vm.params.psfMagnitude, range: 10.0...22.0, step: 0.1, digits: 1)
                 NumericSlider(title: "FWHM", unit: "\"", value: $vm.params.psfFwhmArcsec, range: 0.2...5.0, step: 0.1, digits: 1)
             }
             LabeledToggle(title: "Injected SN", value: $vm.params.showInjectedSource)
@@ -76,7 +76,7 @@ struct ControlSidebar: View {
                 .toggleStyle(.checkbox)
         }
         .glassCard()
-        .onChange(of: vm.params.psfBrightness) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.psfMagnitude) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.psfFwhmArcsec) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.showInjectedSource) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.showCrosshair) { _, _ in vm.scheduleLiveRender() }

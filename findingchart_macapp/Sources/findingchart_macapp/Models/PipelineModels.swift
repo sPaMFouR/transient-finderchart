@@ -14,7 +14,7 @@ struct PipelineParams: Codable, Equatable {
     var sizeArcmin: Double = 3.0
     var pixelScaleArcsec: Double = 0.262
 
-    var psfBrightness: Double = 5.0
+    var psfMagnitude: Double = 18.0
     var psfFwhmArcsec: Double = 1.0
     var showInjectedSource: Bool = true
     var showCrosshair: Bool = true

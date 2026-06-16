@@ -59,7 +59,7 @@ class ChartSettings:
     slit_length_arcsec: float = 20.0
     slit_pa_deg: float = 0.0
     slit_pa_mode: str = "Fixed sky PA"
-    psf_brightness: float = 5.0
+    psf_magnitude: float = 18.0
     psf_fwhm_arcsec: float = 1.0
     show_injected_source: bool = True
     show_crosshair: bool = True

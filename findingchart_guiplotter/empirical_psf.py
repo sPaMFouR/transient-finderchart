@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 from astropy.stats import sigma_clipped_stats
 from scipy.ndimage import center_of_mass, maximum_filter
+from scipy.ndimage import gaussian_filter
 from scipy.ndimage import shift as ndi_shift
 from scipy.spatial import cKDTree
 
@@ -216,7 +217,8 @@ def build_empirical_psf(
     stack = np.nanmedian(np.stack(normalized_stamps, axis=0), axis=0)
     stack[~np.isfinite(stack)] = 0.0
     stack[stack < 0] = 0.0
-    stack = smooth_psf_wings(stack, background_mask=background_mask)
+    stack = circularize_psf(gaussian_filter(stack, sigma=0.55))
+    stack = smooth_psf_wings(stack, background_mask=background_mask, taper_start_fraction=0.42)
     total = float(np.sum(stack))
     if total <= 0:
         raise EmpiricalPSFError("built empirical PSF has non-positive total flux")
@@ -244,6 +246,37 @@ def smooth_psf_wings(
         cleaned -= background_level
     cleaned[cleaned < 0] = 0.0
     return cleaned * radial_edge_taper(cleaned.shape, start_fraction=taper_start_fraction)
+
+
+def circularize_psf(psf: np.ndarray, bins: int | None = None) -> np.ndarray:
+    data = np.array(psf, dtype=float, copy=True)
+    data[~np.isfinite(data)] = 0.0
+    data[data < 0] = 0.0
+    ny, nx = data.shape
+    y, x = np.mgrid[:ny, :nx]
+    cy = 0.5 * (ny - 1)
+    cx = 0.5 * (nx - 1)
+    radius = np.hypot(x - cx, y - cy)
+    max_radius = float(np.max(radius))
+    if max_radius <= 0:
+        return data
+    bins = bins or max(8, int(math.ceil(max_radius)) + 1)
+    edges = np.linspace(0.0, max_radius, bins + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    profile = np.zeros(bins, dtype=float)
+    last_value = 0.0
+    for idx in range(bins):
+        mask = (radius >= edges[idx]) & (radius < edges[idx + 1])
+        values = data[mask]
+        values = values[np.isfinite(values) & (values >= 0)]
+        if values.size:
+            last_value = float(np.nanmedian(values))
+        profile[idx] = last_value
+    profile = np.maximum.accumulate(profile[::-1])[::-1]
+    circular = np.interp(radius.ravel(), centers, profile, left=profile[0], right=0.0).reshape(data.shape)
+    circular[~np.isfinite(circular)] = 0.0
+    circular[circular < 0] = 0.0
+    return circular
 
 
 def radial_edge_taper(shape: tuple[int, int], start_fraction: float = 0.68, boundary_width: float = 3.0) -> np.ndarray:

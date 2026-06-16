@@ -5,11 +5,15 @@ from astropy.coordinates import SkyCoord
 
 from findingchart_guiplotter.image_fetchers import centered_tan_wcs
 from findingchart_guiplotter.models import ChartSettings, ImageData, Target
+from findingchart_guiplotter.catalog import CatalogSource
 from findingchart_guiplotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
     INSET_SOURCE_BOX_FOV_FRACTION,
     apply_rgb_stretch,
     arcsec_label,
+    estimate_catalog_flux_scale,
+    injected_reference_mag,
+    magnitude_flux_scale,
     catalog_source_color,
     contrast_stretch,
     image_display_extent,
@@ -123,6 +127,55 @@ def test_apply_rgb_stretch_preserves_shape_and_bounds():
     assert stretched.shape == data.shape
     assert np.nanmin(stretched) >= 0.0
     assert np.nanmax(stretched) <= 1.0
+
+
+def test_injected_magnitude_scale_uses_catalog_style_flux_relation():
+    assert injected_reference_mag(ChartSettings(psf_magnitude=18.0)) == pytest.approx(18.0)
+    assert injected_reference_mag(ChartSettings(psf_magnitude=10.0)) == pytest.approx(10.0)
+    assert magnitude_flux_scale(10.0, reference_mag=18.0) == pytest.approx(10 ** 3.2)
+    assert magnitude_flux_scale(22.0, reference_mag=18.0) == pytest.approx(10 ** -1.6)
+
+
+def test_catalog_flux_scale_uses_loaded_catalog_sources_as_zero_point():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((101, 101)),
+        wcs=centered_tan_wcs(target, nx=101, ny=101, pixscale_arcsec=1.0),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+    source_a_coord = target_coord.spherical_offsets_by(10.0 * u.arcsec, 0.0 * u.arcsec)
+    source_b_coord = target_coord.spherical_offsets_by(-12.0 * u.arcsec, 8.0 * u.arcsec)
+    source_a = CatalogSource(
+        ra_deg=source_a_coord.ra.deg,
+        dec_deg=source_a_coord.dec.deg,
+        label="Gaia A",
+        magnitude=16.0,
+        magnitude_band="G",
+    )
+    source_b = CatalogSource(
+        ra_deg=source_b_coord.ra.deg,
+        dec_deg=source_b_coord.dec.deg,
+        label="Gaia B",
+        magnitude=17.0,
+        magnitude_band="G",
+    )
+    zero_point = 8.0
+    for source in (source_a, source_b):
+        x, y = world_to_scalar_pixel(image, SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg))
+        image.data[int(round(y)), int(round(x))] = 10 ** (zero_point - 0.4 * source.magnitude)
+
+    flux = estimate_catalog_flux_scale(
+        image.data,
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, catalog_sources=[source_a, source_b]),
+        fwhm_pix=1.5,
+    )
+
+    assert flux == pytest.approx(10 ** (zero_point - 0.4 * 18.0), rel=0.05)
 
 
 def test_catalog_source_colors_distinguish_catalogs():
