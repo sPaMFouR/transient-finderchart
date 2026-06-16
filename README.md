@@ -6,16 +6,17 @@
 [![Tests](https://img.shields.io/badge/tests-29%20passed-brightgreen.svg)](tests)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts. The inset and finding-chart presentation are partly inspired by Sean Brennan's [`Astro-Sean/finder_chart`](https://github.com/Astro-Sean/finder_chart).
+Desktop and development-web finding chart tool for transient observations. It resolves TNS/manual targets, fetches archival cutouts, injects a visual SN PSF, overlays slit/catalog geometry, and exports PNG/JPG/PDF charts. The finding-chart presentation is inspired by Sean Brennan's [`Astro-Sean/finder_chart`](https://github.com/Astro-Sean/finder_chart).
 
 ![Template finding chart](docs/assets/findingchartGUI_2024ggi.jpg)
 
 ## Features
 
 - Archives: Pan-STARRS, Legacy Survey, DSS2, 2MASS.
-- Bands/modes: survey-specific single-band and color-composite options.
+- Filter selection: survey-specific single-band defaults (`r`, `red`, `J`) plus color-composite mode where supported.
 - Chart overlays: SN marker, FOV-scaled 3x inset, slit, compass, 1 arcmin ruler.
-- Injected SN: empirical field-star PSF with Moffat fallback.
+- Injected SN: brightness control, inset zoom control, and selectable PSF model (`empirical core`, `empirical hybrid`, `moffat`).
+- Contrast: auto-contrast slider, stretch selector, or manual `vmin` / `vmax`.
 - Catalogs: Gaia DR3 with VizieR fallback and Pan-STARRS DR2 overlays with brightness cut and inset markers.
 - Blind offsets: selected catalog stars report delta RA, delta Dec, PA east of north, magnitude, and Gaia parallax/proper motion when available.
 - Export: PNG, JPG, PDF.
@@ -74,11 +75,11 @@ Set `FINDING_CHART_PYTHON` to a virtualenv/conda Python with the package depende
 ## Workflow
 
 1. Search TNS/IAU/ZTF name or enter custom RA/Dec.
-2. Select archive, mode, band, field size, and pixel scale.
+2. Select archive, filter, field size, and pixel scale.
 3. Load the image.
 4. Optionally query Gaia DR3 or Pan-STARRS DR2 with a brightness cut.
 5. Click a catalog marker in the main chart or inset for blind-offset details.
-6. Adjust slit, overlays, injected SN, observatory/time, and contrast.
+6. Adjust slit, overlays, injected SN brightness, PSF model, inset zoom, observatory/time, and contrast.
 7. Export the chart.
 
 ## TNS Credentials
