@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import json
 import os
 import pickle
@@ -76,23 +77,38 @@ def _target_payload(target) -> dict[str, Any]:
     }
 
 
-def _source_payload(source, target=None) -> dict[str, Any]:
-    detail = source.label
-    if source.magnitude is not None:
-        detail += f"\nMagnitude {source.magnitude:.3f} {source.magnitude_band}".rstrip()
-    if getattr(source, "parallax_mas", None) is not None:
-        detail += f"\nParallax {source.parallax_mas:.3f} mas"
-    if getattr(source, "pmra_mas_per_year", None) is not None and getattr(source, "pmdec_mas_per_year", None) is not None:
-        detail += f"\nPM RA {source.pmra_mas_per_year:.3f} mas/yr, Dec {source.pmdec_mas_per_year:.3f} mas/yr"
-    if target is not None:
-        import astropy.units as u
-        from astropy.coordinates import SkyCoord
+def _target_with_current_label(target, payload: dict[str, Any]):
+    label = str(payload.get("targetName") or "").strip()
+    if not label:
+        return target
+    updated = copy.copy(target)
+    updated.display_name = label
+    updated.aliases = []
+    return updated
 
-        t = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
-        s = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
-        sep = t.separation(s).arcsec
-        pa = t.position_angle(s).deg
-        detail += f"\nOffset {sep:.2f}\" at PA {pa:.2f} deg E of N"
+
+def _source_payload(source, target=None) -> dict[str, Any]:
+    import astropy.units as u
+    import numpy as np
+    from astropy.coordinates import SkyCoord
+
+    coord = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
+    lines = [f"Parallax : {_format_optional(source.parallax_mas, ' mas', missing='------')}"]
+    separation_arcsec = None
+    delta_ra_arcsec = None
+    delta_dec_arcsec = None
+    pa_e_of_n = None
+    if target is not None:
+        target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+        delta_ra, delta_dec = target_coord.spherical_offsets_to(coord)
+        delta_ra_arcsec = float(delta_ra.to_value(u.arcsec))
+        delta_dec_arcsec = float(delta_dec.to_value(u.arcsec))
+        pa_e_of_n = float((u.Quantity(np.degrees(np.arctan2(delta_ra_arcsec, delta_dec_arcsec)), u.deg).to_value(u.deg) + 360.0) % 360.0)
+        separation_arcsec = float(coord.separation(target_coord).arcsec)
+        lines.append(f"Delta_RA : {delta_ra_arcsec:+.2f}\"")
+        lines.append(f"Delta_Dec: {delta_dec_arcsec:+.2f}\"")
+        lines.append(f"Offset from target: {separation_arcsec:.2f}\"")
+        lines.append(f"PA E of N: {pa_e_of_n:.2f} deg")
     return {
         "id": source.label,
         "label": source.label,
@@ -102,8 +118,43 @@ def _source_payload(source, target=None) -> dict[str, Any]:
         "magnitude": source.magnitude,
         "magnitudeBand": source.magnitude_band,
         "sourceID": source.source_id,
-        "detail": detail,
+        "parallaxMas": source.parallax_mas,
+        "pmraMasPerYear": source.pmra_mas_per_year,
+        "pmdecMasPerYear": source.pmdec_mas_per_year,
+        "deltaRaArcsec": delta_ra_arcsec,
+        "deltaDecArcsec": delta_dec_arcsec,
+        "paEastOfNorthDeg": pa_e_of_n,
+        "separationArcsec": separation_arcsec,
+        "detail": "\n".join(lines),
     }
+
+
+def _format_optional(value: float | None, suffix: str, missing: str = "not available") -> str:
+    if value is None:
+        return missing
+    return f"{value:.3f}{suffix}"
+
+
+def _sort_payloads_by_distance(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        payloads,
+        key=lambda payload: (
+            float("inf") if payload.get("separationArcsec") is None else float(payload["separationArcsec"]),
+            float("inf") if payload.get("magnitude") is None else float(payload["magnitude"]),
+            str(payload.get("label") or ""),
+        ),
+    )
+
+
+def _filter_payloads_by_distance(payloads: list[dict[str, Any]], max_distance_arcsec: Any) -> list[dict[str, Any]]:
+    if max_distance_arcsec in (None, ""):
+        return payloads
+    cutoff = float(max_distance_arcsec)
+    return [
+        payload
+        for payload in payloads
+        if payload.get("separationArcsec") is not None and float(payload["separationArcsec"]) <= cutoff
+    ]
 
 
 def _source_payloads_with_markers(sources: list[Any], target, image, ax, figure_width: float, figure_height: float) -> list[dict[str, Any]]:
@@ -124,7 +175,7 @@ def _source_payloads_with_markers(sources: list[Any], target, image, ax, figure_
         except Exception:
             pass
         payloads.append(payload)
-    return payloads
+    return _sort_payloads_by_distance(payloads)
 
 
 def _save_chart_with_marker_payload(output_path: Path, image, target, settings, catalog_sources: list[Any], dpi: int) -> tuple[list[dict[str, Any]], int, int]:
@@ -281,7 +332,7 @@ def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, ex
     from findingchart_guiplotter.renderer import pixel_scale_arcsec
 
     cached = _load_image_cache(payload)
-    target = cached["target"]
+    target = _target_with_current_label(cached["target"], payload)
     image = cached["image"]
     catalog_sources = _load_catalog_cache(payload)
     settings = _settings(payload, target, catalog_sources)
@@ -322,7 +373,7 @@ def _query_catalog(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
     from findingchart_guiplotter.catalog import query_catalog_sources
 
     cached = _load_image_cache(payload)
-    target = cached["target"]
+    target = _target_with_current_label(cached["target"], payload)
     request = cached["request"]
     max_mag = payload.get("catalogMaxMagnitude")
     sources = query_catalog_sources(
@@ -332,6 +383,10 @@ def _query_catalog(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
         200,
         float(max_mag) if max_mag not in (None, "") else None,
     )
+    source_payloads = _sort_payloads_by_distance([_source_payload(source, target) for source in sources])
+    source_payloads = _filter_payloads_by_distance(source_payloads, payload.get("catalogMaxDistanceArcsec"))
+    included_labels = {source["id"] for source in source_payloads}
+    sources = [source for source in sources if source.label in included_labels]
     cache_path = _state_dir(repo_dir) / f"{_safe_name(target.label)}_{_safe_name(str(payload.get('catalogName') or 'catalog'))}_catalog.pkl"
     with cache_path.open("wb") as handle:
         pickle.dump(sources, handle)
@@ -341,7 +396,7 @@ def _query_catalog(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
         "target": _target_payload(target),
         "imageCachePath": payload.get("imageCachePath"),
         "catalogCachePath": str(cache_path.resolve()),
-        "catalogSources": [_source_payload(source, target) for source in sources],
+        "catalogSources": source_payloads,
         "catalogCount": len(sources),
         "message": f"Loaded {len(sources)} catalog sources",
     }

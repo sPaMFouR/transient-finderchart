@@ -132,8 +132,13 @@ final class PipelineViewModel: ObservableObject {
     }
 
     func selectCatalogSource(_ source: CatalogSourcePayload) {
-        params.selectedCatalogSourceID = source.id
-        selectedCatalogDetail = source.detail
+        if params.selectedCatalogSourceID == source.id {
+            params.selectedCatalogSourceID = ""
+            selectedCatalogDetail = ""
+        } else {
+            params.selectedCatalogSourceID = source.id
+            selectedCatalogDetail = source.detail
+        }
         scheduleLiveRender()
     }
 

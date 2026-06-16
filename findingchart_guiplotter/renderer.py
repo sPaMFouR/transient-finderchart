@@ -361,7 +361,7 @@ def draw_metadata_box(ax, image: ImageData, target: Target, settings: ChartSetti
     ra_text, dec_text = target_sexagesimal(target)
     text = "\n".join(
         [
-            # f"{target.label}",
+            f"{target.label}",
             # f"RA  {ra_text}",
             # f"Dec {dec_text}",
             slit_instruction_text(settings),
@@ -763,11 +763,20 @@ def draw_catalog_sources_inset(
         local_y = y - y_offset
         if local_x < -0.5 or local_x > nx - 0.5 or local_y < -0.5 or local_y > ny - 0.5:
             continue
-        draw_catalog_marker(inset, local_x, local_y, source, settings, markersize=5.5, linewidth=0.9)
+        draw_catalog_marker(inset, local_x, local_y, source, settings, markersize=5.5, linewidth=0.9, show_selected=False)
 
 
-def draw_catalog_marker(ax, x: float, y: float, source, settings: ChartSettings, markersize: float = 5.0, linewidth: float = 1.0) -> None:
-    selected = getattr(source, "label", "") == settings.selected_catalog_source_label
+def draw_catalog_marker(
+    ax,
+    x: float,
+    y: float,
+    source,
+    settings: ChartSettings,
+    markersize: float = 5.0,
+    linewidth: float = 1.0,
+    show_selected: bool = True,
+) -> None:
+    selected = show_selected and getattr(source, "label", "") == settings.selected_catalog_source_label
     edge_color = catalog_source_color(source)
     ax.plot(
         x,

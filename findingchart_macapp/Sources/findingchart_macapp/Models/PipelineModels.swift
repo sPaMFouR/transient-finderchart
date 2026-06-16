@@ -32,7 +32,8 @@ struct PipelineParams: Codable, Equatable {
 
     var queryCatalog: Bool = false
     var catalogName: String = "Gaia DR3"
-    var catalogMaxMagnitude: Double? = nil
+    var catalogMaxMagnitude: Double? = 21.0
+    var catalogMaxDistanceArcsec: Double? = nil
     var selectedCatalogSourceID: String = ""
     var imageCachePath: String = ""
     var catalogCachePath: String = ""
@@ -91,6 +92,13 @@ struct CatalogSourcePayload: Codable, Identifiable, Hashable {
     var magnitude: Double?
     var magnitudeBand: String
     var sourceID: String
+    var parallaxMas: Double?
+    var pmraMasPerYear: Double?
+    var pmdecMasPerYear: Double?
+    var deltaRaArcsec: Double?
+    var deltaDecArcsec: Double?
+    var paEastOfNorthDeg: Double?
+    var separationArcsec: Double?
     var detail: String
     var markerX: Double?
     var markerY: Double?

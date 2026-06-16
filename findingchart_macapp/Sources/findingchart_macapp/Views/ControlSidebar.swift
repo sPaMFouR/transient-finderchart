@@ -16,7 +16,7 @@ struct ControlSidebar: View {
             }
             .padding(16)
         }
-        .frame(width: 380)
+        .frame(width: 266)
     }
 
     private var targetSection: some View {
@@ -38,6 +38,7 @@ struct ControlSidebar: View {
             ActionButton(title: "Load Target", systemName: "scope", disabled: vm.isRunning, action: vm.loadTarget)
         }
         .glassCard()
+        .onChange(of: vm.params.targetName) { _, _ in vm.scheduleLiveRender() }
     }
 
     private var archiveImageSection: some View {
@@ -96,14 +97,11 @@ struct ControlSidebar: View {
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 NumericSlider(title: "Contrast", unit: "%", value: $vm.params.contrastPercentile, range: 95.0...99.9, step: 0.1, digits: 1)
             }
-            Text("Loaded-image arcsinh defaults prefill vmin/vmax; turn Auto off to use manual limits.")
-                .font(AppFont.body(10))
-                .foregroundStyle(Palette.textTertiary)
             HStack {
-                TextField("vmin", value: $vm.params.vmin, format: .number)
+                TextField("vmin", value: $vm.params.vmin, format: .number.precision(.fractionLength(0...4)))
                     .textFieldStyle(.roundedBorder)
                     .disabled(vm.params.autoContrast)
-                TextField("vmax", value: $vm.params.vmax, format: .number)
+                TextField("vmax", value: $vm.params.vmax, format: .number.precision(.fractionLength(0...4)))
                     .textFieldStyle(.roundedBorder)
                     .disabled(vm.params.autoContrast)
             }
@@ -155,15 +153,31 @@ struct ControlSidebar: View {
                 Text("Pan-STARRS DR2").tag("Pan-STARRS DR2")
                 Text("Gaia + Pan-STARRS").tag("Gaia DR3 + Pan-STARRS DR2")
             }
-            TextField("Max magnitude", value: $vm.params.catalogMaxMagnitude, format: .number)
-                .textFieldStyle(.roundedBorder)
+            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
+                GridRow {
+                    Text("Mag Cut-Off")
+                        .font(AppFont.body(11))
+                        .foregroundStyle(Palette.textSecondary)
+                    TextField("", value: $vm.params.catalogMaxMagnitude, format: .number.precision(.fractionLength(0...2)))
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Distance")
+                        .font(AppFont.body(11))
+                        .foregroundStyle(Palette.textSecondary)
+                    TextField("arcsec", value: $vm.params.catalogMaxDistanceArcsec, format: .number.precision(.fractionLength(0...1)))
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
             HStack(spacing: 8) {
                 ActionButton(title: "Load Catalog", systemName: "star.circle", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.queryCatalog)
                 Button {
                     vm.clearCatalog()
                 } label: {
-                    Image(systemName: "xmark.circle")
-                        .frame(width: 34, height: 34)
+                    Label("Clear X", systemImage: "xmark.circle")
+                        .font(AppFont.body(12).weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .frame(height: 34)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Palette.textSecondary)
@@ -177,6 +191,18 @@ struct ControlSidebar: View {
             .background(Color.black.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             if !vm.selectedCatalogDetail.isEmpty {
+                Button {
+                    if let source = vm.catalogSources.first(where: { $0.id == vm.params.selectedCatalogSourceID }) {
+                        vm.selectCatalogSource(source)
+                    }
+                } label: {
+                    Label("Clear Selection", systemImage: "xmark.circle")
+                        .font(AppFont.body(12).weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.textSecondary)
                 Text(vm.selectedCatalogDetail)
                     .font(AppFont.mono(11))
                     .foregroundStyle(Palette.textSecondary)
@@ -207,10 +233,17 @@ struct ControlSidebar: View {
                                 .foregroundStyle(Palette.textTertiary)
                         }
                         Spacer()
-                        if let mag = source.magnitude {
-                            Text("\(Fmt.fixed(mag, 2)) \(source.magnitudeBand)")
-                                .font(AppFont.mono(10))
-                                .foregroundStyle(Palette.cyan)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            if let mag = source.magnitude {
+                                Text("\(Fmt.fixed(mag, 2)) \(source.magnitudeBand)")
+                                    .font(AppFont.mono(10))
+                                    .foregroundStyle(Palette.cyan)
+                            }
+                            if let separation = source.separationArcsec {
+                                Text("\(Fmt.fixed(separation, 2))\"")
+                                    .font(AppFont.mono(10))
+                                    .foregroundStyle(Palette.cyan)
+                            }
                         }
                     }
                     .padding(8)
