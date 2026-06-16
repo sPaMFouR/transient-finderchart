@@ -121,8 +121,25 @@ struct ControlSidebar: View {
             }
             TextField("Max magnitude", value: $vm.params.catalogMaxMagnitude, format: .number)
                 .textFieldStyle(.roundedBorder)
-            ActionButton(title: "Load Catalog", systemName: "star.circle", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.queryCatalog)
-            catalogList
+            HStack(spacing: 8) {
+                ActionButton(title: "Load Catalog", systemName: "star.circle", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.queryCatalog)
+                Button {
+                    vm.clearCatalog()
+                } label: {
+                    Image(systemName: "xmark.circle")
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.textSecondary)
+                .help("Clear catalog overlay")
+                .disabled(vm.isRunning || vm.catalogSources.isEmpty)
+            }
+            ScrollView {
+                catalogList
+            }
+            .frame(maxHeight: 204)
+            .background(Color.black.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             if !vm.selectedCatalogDetail.isEmpty {
                 Text(vm.selectedCatalogDetail)
                     .font(AppFont.mono(11))
@@ -139,7 +156,7 @@ struct ControlSidebar: View {
 
     private var catalogList: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(vm.catalogSources.prefix(24))) { source in
+            ForEach(vm.catalogSources) { source in
                 Button {
                     vm.selectCatalogSource(source)
                 } label: {

@@ -681,7 +681,7 @@ def catalog_source_color(source) -> str:
     if "Pan-STARRS" in catalog:
         return "lightcoral"
     if "Gaia" in catalog:
-        return "orange"
+        return "cyan"
     return "white"
 
 

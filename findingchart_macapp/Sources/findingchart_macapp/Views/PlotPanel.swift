@@ -43,16 +43,16 @@ struct PlotPanel: View {
     @ViewBuilder
     private var chartImage: some View {
         if let path = vm.result?.imagePath, let image = NSImage(contentsOfFile: path) {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFit()
-                .padding(14)
+            InteractiveChartImage(image: image, sources: vm.catalogSources, selectedID: vm.params.selectedCatalogSourceID) { source in
+                vm.selectCatalogSource(source)
+            }
+            .padding(14)
         } else {
             VStack(spacing: 12) {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(.system(size: 44))
                     .foregroundStyle(Palette.textTertiary)
-                Text("Press Render Chart")
+                Text("Load Image")
                     .font(AppFont.title(18))
                     .foregroundStyle(Palette.textSecondary)
             }
@@ -84,5 +84,60 @@ struct PlotPanel: View {
         let band = vm.result?.band ?? vm.params.band
         let scale = vm.result?.pixelScaleArcsec ?? vm.params.pixelScaleArcsec
         return "\(survey) \(band)  |  \(Fmt.fixed(scale, 3)) arcsec/pix"
+    }
+}
+
+struct InteractiveChartImage: View {
+    let image: NSImage
+    let sources: [CatalogSourcePayload]
+    let selectedID: String
+    let onSelect: (CatalogSourcePayload) -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = fittedImageRect(imageSize: image.size, container: proxy.size)
+            ZStack(alignment: .topLeading) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+
+                ForEach(clickableSources) { source in
+                    Button {
+                        onSelect(source)
+                    } label: {
+                        Circle()
+                            .fill(Color.clear)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(source.detail)
+                    .position(
+                        x: rect.minX + rect.width * CGFloat(source.markerX ?? 0),
+                        y: rect.minY + rect.height * CGFloat(source.markerY ?? 0)
+                    )
+                }
+            }
+        }
+    }
+
+    private var clickableSources: [CatalogSourcePayload] {
+        sources.filter { $0.markerX != nil && $0.markerY != nil }
+    }
+
+    private func fittedImageRect(imageSize: NSSize, container: CGSize) -> CGRect {
+        guard imageSize.width > 0, imageSize.height > 0, container.width > 0, container.height > 0 else {
+            return CGRect(origin: .zero, size: container)
+        }
+        let scale = min(container.width / imageSize.width, container.height / imageSize.height)
+        let width = imageSize.width * scale
+        let height = imageSize.height * scale
+        return CGRect(
+            x: (container.width - width) / 2.0,
+            y: (container.height - height) / 2.0,
+            width: width,
+            height: height
+        )
     }
 }

@@ -119,6 +119,15 @@ final class PipelineViewModel: ObservableObject {
         scheduleLiveRender()
     }
 
+    func clearCatalog() {
+        params.catalogCachePath = ""
+        params.selectedCatalogSourceID = ""
+        params.queryCatalog = false
+        catalogSources = []
+        selectedCatalogDetail = ""
+        scheduleLiveRender()
+    }
+
     func exportPDF() {
         export(action: "exportPDF", statusText: "Saving PDF...")
     }
@@ -196,6 +205,8 @@ final class PipelineViewModel: ObservableObject {
             slitPaDeg: existing?.slitPaDeg,
             message: output.message,
             imageCachePath: output.imageCachePath ?? existing?.imageCachePath,
+            imageWidth: output.imageWidth ?? existing?.imageWidth,
+            imageHeight: output.imageHeight ?? existing?.imageHeight,
             catalogCachePath: output.catalogCachePath,
             catalogSources: output.catalogSources,
             selectedCatalogDetail: output.selectedCatalogDetail,

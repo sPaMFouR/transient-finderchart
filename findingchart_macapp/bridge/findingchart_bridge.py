@@ -106,6 +106,46 @@ def _source_payload(source, target=None) -> dict[str, Any]:
     }
 
 
+def _source_payloads_with_markers(sources: list[Any], target, image, ax, figure_width: float, figure_height: float) -> list[dict[str, Any]]:
+    import astropy.units as u
+    from astropy.coordinates import SkyCoord
+
+    from findingchart_guiplotter.renderer import world_to_scalar_pixel
+
+    payloads = []
+    for source in sources:
+        payload = _source_payload(source, target)
+        try:
+            x_data, y_data = world_to_scalar_pixel(image, SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg))
+            x_display, y_display = ax.transData.transform((x_data, y_data))
+            if 0 <= x_display <= figure_width and 0 <= y_display <= figure_height:
+                payload["markerX"] = float(x_display / figure_width)
+                payload["markerY"] = float(1.0 - (y_display / figure_height))
+        except Exception:
+            pass
+        payloads.append(payload)
+    return payloads
+
+
+def _save_chart_with_marker_payload(output_path: Path, image, target, settings, catalog_sources: list[Any], dpi: int) -> tuple[list[dict[str, Any]], int, int]:
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
+
+    from findingchart_guiplotter.renderer import apply_project_style, draw_chart
+
+    apply_project_style()
+    fig = Figure(figsize=(7, 7), dpi=dpi)
+    FigureCanvasAgg(fig)
+    ax = fig.add_subplot(111, projection=image.wcs)
+    draw_chart(ax, image, target, settings)
+    fig.subplots_adjust(left=0.12, right=0.96, bottom=0.14, top=0.90)
+    fig.canvas.draw()
+    width, height = fig.canvas.get_width_height()
+    payloads = _source_payloads_with_markers(catalog_sources, target, image, ax, float(width), float(height))
+    fig.savefig(output_path, dpi=dpi)
+    return payloads, int(width), int(height)
+
+
 def _metadata() -> dict[str, Any]:
     from findingchart_guiplotter.image_fetchers import SURVEY_BANDS, available_surveys
     from findingchart_guiplotter.observatories import OBSERVATORIES
@@ -225,7 +265,7 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
 
 
 def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, export_format: str = "png", dpi: int = 180) -> dict[str, Any]:
-    from findingchart_guiplotter.renderer import export_chart, pixel_scale_arcsec
+    from findingchart_guiplotter.renderer import pixel_scale_arcsec
 
     cached = _load_image_cache(payload)
     target = cached["target"]
@@ -237,9 +277,8 @@ def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, ex
     destination.mkdir(parents=True, exist_ok=True)
     suffix = export_format.lower().lstrip(".")
     output_path = destination / f"{_safe_name(target.label)}_finding_chart.{suffix}"
-    export_chart(output_path, image, target, settings, dpi=dpi)
+    sources, image_width, image_height = _save_chart_with_marker_payload(output_path, image, target, settings, catalog_sources, dpi=dpi)
 
-    sources = [_source_payload(source, target) for source in catalog_sources]
     selected_id = str(payload.get("selectedCatalogSourceID") or "")
     selected_detail = next((source["detail"] for source in sources if source["id"] == selected_id), "")
     return {
@@ -248,6 +287,8 @@ def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, ex
         "target": _target_payload(target),
         "imagePath": str(output_path.resolve()),
         "imageCachePath": payload.get("imageCachePath"),
+        "imageWidth": image_width,
+        "imageHeight": image_height,
         "catalogCachePath": payload.get("catalogCachePath"),
         "catalogSources": sources,
         "selectedCatalogDetail": selected_detail,

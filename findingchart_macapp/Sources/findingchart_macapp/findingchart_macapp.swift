@@ -3,7 +3,9 @@ import SwiftUI
 
 @main
 struct findingchart_macapp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var vm = PipelineViewModel()
+    private let defaultWindowSize = CGSize(width: 1200, height: 785)
 
     var body: some Scene {
         Window("Transient Finderchart", id: "main") {
@@ -18,29 +20,52 @@ struct findingchart_macapp: App {
                 }
         }
         .windowResizability(.contentMinSize)
+        .defaultSize(width: defaultWindowSize.width, height: defaultWindowSize.height)
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
 struct WindowConfigurator: NSViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
-            configure(view.window)
+            configure(view.window, coordinator: context.coordinator)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
-            configure(nsView.window)
+            configure(nsView.window, coordinator: context.coordinator)
         }
     }
 
-    private func configure(_ window: NSWindow?) {
+    private func configure(_ window: NSWindow?, coordinator: Coordinator) {
         guard let window else { return }
         window.styleMask.insert(.resizable)
         window.minSize = NSSize(width: 980, height: 640)
         window.maxSize = NSSize(width: 10000, height: 10000)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        if !coordinator.didSetInitialSize {
+            window.setContentSize(NSSize(width: 1200, height: 785))
+            window.center()
+            coordinator.didSetInitialSize = true
+        }
+    }
+
+    final class Coordinator {
+        var didSetInitialSize = false
     }
 }
 
@@ -69,6 +94,10 @@ struct ContentView: View {
                 .font(AppFont.body(12))
                 .foregroundStyle(Palette.textSecondary)
             Spacer()
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Palette.textTertiary)
+                .help("Drag a window edge or corner to resize.")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 9)

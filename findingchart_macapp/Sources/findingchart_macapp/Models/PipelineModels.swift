@@ -55,6 +55,8 @@ struct PipelineResult: Codable {
     var slitPaDeg: Double?
     var message: String?
     var imageCachePath: String?
+    var imageWidth: Int?
+    var imageHeight: Int?
     var catalogCachePath: String?
     var catalogSources: [CatalogSourcePayload]?
     var selectedCatalogDetail: String?
@@ -84,6 +86,8 @@ struct CatalogSourcePayload: Codable, Identifiable, Hashable {
     var magnitudeBand: String
     var sourceID: String
     var detail: String
+    var markerX: Double?
+    var markerY: Double?
 }
 
 enum Fmt {
