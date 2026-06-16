@@ -14,7 +14,7 @@ from datetime import datetime
 QT_API = os.environ.get("FINDING_CHART_QT_API", "").strip().lower()
 
 if QT_API == "pyqt6":
-    from PyQt6.QtCore import QObject, QThread, pyqtSignal as Signal
+    from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal as Signal
     from PyQt6.QtWidgets import (
         QApplication,
         QCheckBox,
@@ -31,6 +31,7 @@ if QT_API == "pyqt6":
         QMainWindow,
         QMessageBox,
         QPushButton,
+        QSlider,
         QSpinBox,
         QTabWidget,
         QTextEdit,
@@ -40,7 +41,7 @@ if QT_API == "pyqt6":
     BINDING = "PyQt6"
 else:
     try:
-        from PySide6.QtCore import QObject, QThread, Signal
+        from PySide6.QtCore import QObject, QThread, Qt, Signal
         from PySide6.QtWidgets import (
             QApplication,
             QCheckBox,
@@ -57,6 +58,7 @@ else:
             QMainWindow,
             QMessageBox,
             QPushButton,
+            QSlider,
             QSpinBox,
             QTabWidget,
             QTextEdit,
@@ -65,7 +67,7 @@ else:
         )
         BINDING = "PySide6"
     except ImportError:
-        from PyQt6.QtCore import QObject, QThread, pyqtSignal as Signal
+        from PyQt6.QtCore import QObject, QThread, Qt, pyqtSignal as Signal
         from PyQt6.QtWidgets import (
             QApplication,
             QCheckBox,
@@ -82,6 +84,7 @@ else:
             QMainWindow,
             QMessageBox,
             QPushButton,
+            QSlider,
             QSpinBox,
             QTabWidget,
             QTextEdit,

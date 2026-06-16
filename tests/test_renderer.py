@@ -8,7 +8,6 @@ from findingchart_guiplotter.models import ChartSettings, ImageData, Target
 from findingchart_guiplotter.catalog import CatalogSource
 from findingchart_guiplotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
-    INSET_SOURCE_BOX_FOV_FRACTION,
     apply_rgb_stretch,
     arcsec_label,
     estimate_catalog_flux_scale,
@@ -84,7 +83,7 @@ def test_inset_source_box_scales_with_image_fov():
     )
 
     assert image_fov_arcsec(image) == pytest.approx(180.0)
-    assert inset_source_box_arcsec(image) == pytest.approx(180.0 * INSET_SOURCE_BOX_FOV_FRACTION)
+    assert inset_source_box_arcsec(image) == pytest.approx(180.0 / 6.0)
 
 
 def test_inset_source_box_uses_smaller_dimension_for_rectangular_images():
@@ -99,6 +98,19 @@ def test_inset_source_box_uses_smaller_dimension_for_rectangular_images():
 
     assert image_fov_arcsec(image) == pytest.approx(240.0)
     assert inset_source_box_arcsec(image) == pytest.approx(40.0)
+
+
+def test_inset_source_box_respects_custom_zoom_factor():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((360, 360)),
+        wcs=centered_tan_wcs(target, nx=360, ny=360, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    assert inset_source_box_arcsec(image, ChartSettings(inset_zoom_factor=9.0)) == pytest.approx(20.0)
 
 
 def test_inset_scalebar_length_stays_below_third_fov_multiple_of_four():

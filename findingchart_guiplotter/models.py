@@ -71,6 +71,8 @@ class ChartSettings:
     catalog_sources: list[object] = field(default_factory=list)
     selected_catalog_source_label: str = ""
     auto_contrast: bool = True
+    contrast_percentile: float = 99.3
     vmin: float | None = None
     vmax: float | None = None
     contrast_stretch: str = "arcsinh"
+    inset_zoom_factor: float = 6.0

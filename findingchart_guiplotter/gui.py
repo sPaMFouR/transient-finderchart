@@ -26,9 +26,11 @@ from .qt_compat import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSlider,
     QSpinBox,
     QTabWidget,
     QTextEdit,
+    Qt,
     QVBoxLayout,
     QWidget,
     QObject,
@@ -41,7 +43,13 @@ from matplotlib.figure import Figure
 
 from .catalog import CatalogSource, query_catalog_sources
 from .exporting import default_export_filename, ensure_export_suffix
-from .image_fetchers import available_bands, available_surveys, fetch_image
+from .image_fetchers import (
+    available_filter_choices,
+    available_surveys,
+    fetch_image,
+    mode_and_band_from_filter_choice,
+    preferred_filter_choice,
+)
 from .mpl_compat import ensure_astropy_wcsaxes_compat
 from .models import ChartSettings, ImageData, ImageRequest, Target
 from .observatories import OBSERVATORIES, parallactic_angle_deg
@@ -211,9 +219,7 @@ class MainWindow(QMainWindow):
         form = QFormLayout(box)
         self.survey_combo = QComboBox()
         self.survey_combo.addItems(available_surveys())
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Single band", "Color composite"])
-        self.band_combo = QComboBox()
+        self.filter_combo = QComboBox()
         self.size_spin = QDoubleSpinBox()
         self.size_spin.setRange(0.2, 60.0)
         self.size_spin.setSuffix(" arcmin")
@@ -226,12 +232,10 @@ class MainWindow(QMainWindow):
         self.pixscale_spin.setDecimals(3)
         self.load_button = QPushButton("Load Image")
         self.load_button.clicked.connect(self.load_image)
-        self.survey_combo.currentTextChanged.connect(self.update_band_choices)
-        self.mode_combo.currentTextChanged.connect(self.update_band_choices)
-        self.update_band_choices()
+        self.survey_combo.currentTextChanged.connect(self.update_filter_choices)
+        self.update_filter_choices()
         form.addRow("Survey", self.survey_combo)
-        form.addRow("Mode", self.mode_combo)
-        form.addRow("Band", self.band_combo)
+        form.addRow("Filter", self.filter_combo)
         form.addRow("Field", self.size_spin)
         form.addRow("Pixel scale", self.pixscale_spin)
         form.addRow(self.load_button)
@@ -244,6 +248,15 @@ class MainWindow(QMainWindow):
         self.stretch_combo = QComboBox()
         self.stretch_combo.addItems(["arcsinh", "linear", "sqrt", "log"])
         self.stretch_combo.setCurrentText("arcsinh")
+        self.contrast_slider = QSlider(Qt.Horizontal)
+        self.contrast_slider.setRange(950, 999)
+        self.contrast_slider.setValue(993)
+        self.contrast_value_label = QLabel("99.3%")
+        contrast_slider_row = QWidget()
+        contrast_slider_layout = QHBoxLayout(contrast_slider_row)
+        contrast_slider_layout.setContentsMargins(0, 0, 0, 0)
+        contrast_slider_layout.addWidget(self.contrast_slider, 1)
+        contrast_slider_layout.addWidget(self.contrast_value_label, 0)
         self.vmin_spin = QDoubleSpinBox()
         self.vmin_spin.setRange(-1.0e12, 1.0e12)
         self.vmin_spin.setDecimals(4)
@@ -257,6 +270,7 @@ class MainWindow(QMainWindow):
         self.auto_contrast_check.stateChanged.connect(self.toggle_contrast_controls)
         contrast_form.addRow(self.auto_contrast_check)
         contrast_form.addRow("Stretch", self.stretch_combo)
+        contrast_form.addRow("Contrast", contrast_slider_row)
         contrast_form.addRow("vmin", self.vmin_spin)
         contrast_form.addRow("vmax", self.vmax_spin)
         contrast_form.addRow(self.reset_contrast_button)
@@ -278,6 +292,15 @@ class MainWindow(QMainWindow):
         self.magnitude_spin.setSuffix(" mag")
         self.psf_model_combo = QComboBox()
         self.psf_model_combo.addItems(["empirical core", "empirical hybrid", "moffat"])
+        self.inset_zoom_slider = QSlider(Qt.Horizontal)
+        self.inset_zoom_slider.setRange(3, 12)
+        self.inset_zoom_slider.setValue(6)
+        self.inset_zoom_value_label = QLabel("6x")
+        inset_zoom_row = QWidget()
+        inset_zoom_layout = QHBoxLayout(inset_zoom_row)
+        inset_zoom_layout.setContentsMargins(0, 0, 0, 0)
+        inset_zoom_layout.addWidget(self.inset_zoom_slider, 1)
+        inset_zoom_layout.addWidget(self.inset_zoom_value_label, 0)
         self.fwhm_spin = QDoubleSpinBox()
         self.fwhm_spin.setRange(0.1, 10.0)
         self.fwhm_spin.setValue(1.0)
@@ -285,6 +308,7 @@ class MainWindow(QMainWindow):
         source_form.addRow(self.inject_check)
         source_form.addRow("Brightness / mag", self.magnitude_spin)
         source_form.addRow("PSF model", self.psf_model_combo)
+        source_form.addRow("Inset Zoom-in", inset_zoom_row)
         source_form.addRow("FWHM", self.fwhm_spin)
         return source_box
 
@@ -443,10 +467,14 @@ class MainWindow(QMainWindow):
                 widget.valueChanged.connect(self.update_chart_from_controls)
             else:
                 widget.stateChanged.connect(self.update_chart_from_controls)
+        self.contrast_slider.valueChanged.connect(self.update_contrast_label)
+        self.inset_zoom_slider.valueChanged.connect(self.update_inset_zoom_label)
         self.psf_model_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.stretch_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.observatory_combo.currentTextChanged.connect(self.update_pa_from_mode)
         self.datetime_edit.dateTimeChanged.connect(self.update_pa_from_mode)
+        self.update_contrast_label()
+        self.update_inset_zoom_label()
         return page
 
     def _run_worker(self, label: str, function, success_callback, *args) -> None:
@@ -507,25 +535,28 @@ class MainWindow(QMainWindow):
         self.target.aliases = [alternate] if alternate else []
         self.update_chart_from_controls()
 
-    def update_band_choices(self) -> None:
-        current = self.band_combo.currentText() if hasattr(self, "band_combo") else ""
-        bands = available_bands(self.survey_combo.currentText(), self.mode_combo.currentText())
-        self.band_combo.blockSignals(True)
-        self.band_combo.clear()
-        self.band_combo.addItems(bands)
-        if current in bands:
-            self.band_combo.setCurrentText(current)
-        self.band_combo.blockSignals(False)
+    def update_filter_choices(self) -> None:
+        current = self.filter_combo.currentText() if hasattr(self, "filter_combo") else ""
+        options = available_filter_choices(self.survey_combo.currentText())
+        self.filter_combo.blockSignals(True)
+        self.filter_combo.clear()
+        self.filter_combo.addItems(options)
+        if current in options:
+            self.filter_combo.setCurrentText(current)
+        else:
+            self.filter_combo.setCurrentText(preferred_filter_choice(self.survey_combo.currentText()))
+        self.filter_combo.blockSignals(False)
 
     def load_image(self) -> None:
         if self.target is None:
             self.show_error("Search or load a target before loading an image.")
             return
         self.load_button.setEnabled(False)
+        mode, band = mode_and_band_from_filter_choice(self.survey_combo.currentText(), self.filter_combo.currentText())
         request = ImageRequest(
             survey=self.survey_combo.currentText(),
-            mode=self.mode_combo.currentText(),
-            band=self.band_combo.currentText(),
+            mode=mode,
+            band=band,
             size_arcmin=self.size_spin.value(),
             pixel_scale_arcsec=self.pixscale_spin.value(),
         )
@@ -565,9 +596,11 @@ class MainWindow(QMainWindow):
             catalog_sources=list(self.catalog_sources),
             selected_catalog_source_label=self.selected_catalog_source.label if self.selected_catalog_source else "",
             auto_contrast=self.auto_contrast_check.isChecked(),
+            contrast_percentile=self.contrast_slider.value() / 10.0,
             vmin=self.vmin_spin.value(),
             vmax=self.vmax_spin.value(),
             contrast_stretch=self.stretch_combo.currentText(),
+            inset_zoom_factor=float(self.inset_zoom_slider.value()),
         )
 
     def update_chart_from_controls(self) -> None:
@@ -660,6 +693,7 @@ class MainWindow(QMainWindow):
         manual = not self.auto_contrast_check.isChecked()
         self.vmin_spin.setEnabled(manual)
         self.vmax_spin.setEnabled(manual)
+        self.contrast_slider.setEnabled(not manual)
         self.update_chart_from_controls()
 
     def reset_contrast_from_image(self) -> None:
@@ -671,13 +705,21 @@ class MainWindow(QMainWindow):
         finite = data[np.isfinite(data)]
         if finite.size == 0:
             return
-        lo, hi = np.nanpercentile(finite, [1, 99.3])
+        lo, hi = np.nanpercentile(finite, [1, self.contrast_slider.value() / 10.0])
         self.vmin_spin.blockSignals(True)
         self.vmax_spin.blockSignals(True)
         self.vmin_spin.setValue(float(lo))
         self.vmax_spin.setValue(float(hi))
         self.vmin_spin.blockSignals(False)
         self.vmax_spin.blockSignals(False)
+        self.update_chart_from_controls()
+
+    def update_contrast_label(self) -> None:
+        self.contrast_value_label.setText(f"{self.contrast_slider.value() / 10.0:.1f}%")
+        self.update_chart_from_controls()
+
+    def update_inset_zoom_label(self) -> None:
+        self.inset_zoom_value_label.setText(f"{self.inset_zoom_slider.value()}x")
         self.update_chart_from_controls()
 
     def show_error(self, message: str) -> None:

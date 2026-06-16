@@ -44,7 +44,6 @@ SCIENCE_FONT_FAMILY = "sans-serif"
 TEXT_COLOR = 'xkcd:dark'
 CROSSHAIR_COLOR = 'xkcd:dark red'
 SLIT_COLOR = 'xkcd:tomato'
-INSET_SOURCE_BOX_FOV_FRACTION = 1.0 / 6.0
 INSET_DISPLAY_LINEAR_SCALE = 2.0
 
 
@@ -95,8 +94,9 @@ def image_fov_arcsec(image: ImageData) -> float:
     return min(nx, ny) * pixel_scale_arcsec(image)
 
 
-def inset_source_box_arcsec(image: ImageData) -> float:
-    return image_fov_arcsec(image) * INSET_SOURCE_BOX_FOV_FRACTION
+def inset_source_box_arcsec(image: ImageData, settings: ChartSettings | None = None) -> float:
+    zoom_factor = 6.0 if settings is None else max(float(settings.inset_zoom_factor), 1.0)
+    return image_fov_arcsec(image) / zoom_factor
 
 
 def scalar_pixel(value) -> float:
@@ -306,7 +306,7 @@ def contrast_limits(data: np.ndarray, settings: ChartSettings) -> tuple[float, f
         return float(settings.vmin), float(settings.vmax)
     finite = data[np.isfinite(data)]
     if finite.size:
-        interval = PercentileInterval(99.3)
+        interval = PercentileInterval(float(settings.contrast_percentile))
         return tuple(float(value) for value in interval.get_limits(finite))
     return 0.0, 1.0
 
@@ -394,7 +394,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     scale = pixel_scale_arcsec(image)
     if not np.isfinite(scale) or scale <= 0:
         return
-    source_box_arcsec = inset_source_box_arcsec(image)
+    source_box_arcsec = inset_source_box_arcsec(image, settings)
     if not np.isfinite(source_box_arcsec) or source_box_arcsec <= 0:
         return
     half_size_pix = max(5, int(round((source_box_arcsec / 2.0) / scale)))
