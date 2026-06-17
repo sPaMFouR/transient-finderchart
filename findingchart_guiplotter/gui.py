@@ -779,9 +779,9 @@ def source_detail_text(source: CatalogSource, target: Target | None = None) -> s
     if source.magnitude is not None:
         band = f" {source.magnitude_band}" if source.magnitude_band else ""
         lines.append(f"Magnitude{band}: {source.magnitude:.3f}")
-    lines.append(f"Parallax : {format_optional(source.parallax_mas, ' mas', missing='------')}")
-    lines.append(f"PM RA: {format_optional(source.pmra_mas_per_year, ' mas/yr', missing='-----')}")
-    lines.append(f"PM Dec: {format_optional(source.pmdec_mas_per_year, ' mas/yr', missing='-----')}")
+    lines.append(f"Parallax : {format_optional(source.parallax_mas, ' mas', missing='Unavailable')}")
+    lines.append(f"PM RA: {format_optional(source.pmra_mas_per_year, ' mas/yr', missing='Unavailable')}")
+    lines.append(f"PM Dec: {format_optional(source.pmdec_mas_per_year, ' mas/yr', missing='Unavailable')}")
     if target is not None:
         target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
         delta_ra, delta_dec = target_coord.spherical_offsets_to(coord)

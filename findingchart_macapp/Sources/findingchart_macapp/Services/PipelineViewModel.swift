@@ -15,6 +15,7 @@ final class PipelineViewModel: ObservableObject {
     private let bridge = PythonBridge()
     private var progressTask: Task<Void, Never>?
     private var liveRenderTask: Task<Void, Never>?
+    private var needsRenderAfterCurrentRun = false
 
     var hasLoadedImage: Bool {
         !params.imageCachePath.isEmpty
@@ -113,7 +114,7 @@ final class PipelineViewModel: ObservableObject {
         guard hasLoadedImage else { return }
         liveRenderTask?.cancel()
         liveRenderTask = Task {
-            try? await Task.sleep(nanoseconds: 350_000_000)
+            try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
             await MainActor.run {
                 self.renderLive()
@@ -122,7 +123,11 @@ final class PipelineViewModel: ObservableObject {
     }
 
     func renderLive() {
-        guard hasLoadedImage, !isRunning else { return }
+        guard hasLoadedImage else { return }
+        if isRunning {
+            needsRenderAfterCurrentRun = true
+            return
+        }
         runBridge(action: "render", statusText: "Rendering chart...") { output in
             self.result = output
             self.catalogSources = output.catalogSources ?? self.catalogSources
@@ -228,6 +233,10 @@ final class PipelineViewModel: ObservableObject {
                 let output = try await bridge.run(request)
                 finishProgress()
                 apply(output)
+                if needsRenderAfterCurrentRun {
+                    needsRenderAfterCurrentRun = false
+                    scheduleLiveRender()
+                }
             } catch {
                 stopProgress()
                 progress = 0.0

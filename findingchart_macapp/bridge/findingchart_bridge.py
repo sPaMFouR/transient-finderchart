@@ -85,8 +85,7 @@ def _target_with_current_label(target, payload: dict[str, Any]):
         return target
     updated = copy.copy(target)
     updated.display_name = label
-    tns_label = target.display_name or target.tns_name
-    updated.aliases = [tns_label] if tns_label and tns_label.lower() != label.lower() else []
+    updated.aliases = []
     return updated
 
 
@@ -107,9 +106,9 @@ def _source_payload(source, target=None) -> dict[str, Any]:
     if source.magnitude is not None:
         band = f" {source.magnitude_band}" if source.magnitude_band else ""
         lines.append(f"Magnitude{band}: {source.magnitude:.3f}")
-    lines.append(f"Parallax : {_format_optional(source.parallax_mas, ' mas', missing='------')}")
-    lines.append(f"PM RA: {_format_optional(source.pmra_mas_per_year, ' mas/yr', missing='-----')}")
-    lines.append(f"PM Dec: {_format_optional(source.pmdec_mas_per_year, ' mas/yr', missing='-----')}")
+    lines.append(f"Parallax : {_format_optional(source.parallax_mas, ' mas', missing='Unavailable')}")
+    lines.append(f"PM RA: {_format_optional(source.pmra_mas_per_year, ' mas/yr', missing='Unavailable')}")
+    lines.append(f"PM Dec: {_format_optional(source.pmdec_mas_per_year, ' mas/yr', missing='Unavailable')}")
     separation_arcsec = None
     delta_ra_arcsec = None
     delta_dec_arcsec = None
@@ -344,7 +343,7 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
     )
 
 
-def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, export_format: str = "png", dpi: int = 180) -> dict[str, Any]:
+def _render(payload: dict[str, Any], repo_dir: Path, output_dir: Path | None, export_format: str = "png", dpi: int = 140) -> dict[str, Any]:
     from findingchart_guiplotter.renderer import pixel_scale_arcsec
 
     cached = _load_image_cache(payload)
