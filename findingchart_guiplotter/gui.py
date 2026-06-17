@@ -61,6 +61,13 @@ ensure_astropy_wcsaxes_compat()
 warnings.filterwarnings("ignore", message="Tight layout not applied.*", category=UserWarning)
 
 
+def slider_no_ticks():
+    no_ticks = getattr(QSlider, "NoTicks", None)
+    if no_ticks is not None:
+        return no_ticks
+    return QSlider.TickPosition.NoTicks
+
+
 class Worker(QObject):
     finished = Signal(object)
     failed = Signal(str)
@@ -249,6 +256,7 @@ class MainWindow(QMainWindow):
         self.stretch_combo.addItems(["arcsinh", "linear", "sqrt", "log"])
         self.stretch_combo.setCurrentText("arcsinh")
         self.contrast_slider = QSlider(Qt.Horizontal)
+        self.contrast_slider.setTickPosition(slider_no_ticks())
         self.contrast_slider.setRange(950, 999)
         self.contrast_slider.setValue(993)
         self.contrast_value_label = QLabel("99.3%")
@@ -293,6 +301,7 @@ class MainWindow(QMainWindow):
         self.psf_model_combo = QComboBox()
         self.psf_model_combo.addItems(["empirical core", "empirical hybrid", "moffat"])
         self.inset_zoom_slider = QSlider(Qt.Horizontal)
+        self.inset_zoom_slider.setTickPosition(slider_no_ticks())
         self.inset_zoom_slider.setRange(3, 12)
         self.inset_zoom_slider.setValue(6)
         self.inset_zoom_value_label = QLabel("6x")
@@ -770,23 +779,23 @@ def source_detail_text(source: CatalogSource, target: Target | None = None) -> s
     if source.magnitude is not None:
         band = f" {source.magnitude_band}" if source.magnitude_band else ""
         lines.append(f"Magnitude{band}: {source.magnitude:.3f}")
-    lines.append(f"Parallax: {format_optional(source.parallax_mas, ' mas')}")
-    lines.append(f"PM RA: {format_optional(source.pmra_mas_per_year, ' mas/yr')}")
-    lines.append(f"PM Dec: {format_optional(source.pmdec_mas_per_year, ' mas/yr')}")
+    lines.append(f"Parallax : {format_optional(source.parallax_mas, ' mas', missing='------')}")
+    lines.append(f"PM RA: {format_optional(source.pmra_mas_per_year, ' mas/yr', missing='-----')}")
+    lines.append(f"PM Dec: {format_optional(source.pmdec_mas_per_year, ' mas/yr', missing='-----')}")
     if target is not None:
         target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
         delta_ra, delta_dec = target_coord.spherical_offsets_to(coord)
         delta_ra_arcsec = delta_ra.to_value(u.arcsec)
         delta_dec_arcsec = delta_dec.to_value(u.arcsec)
         pa_e_of_n = (u.Quantity(np.degrees(np.arctan2(delta_ra_arcsec, delta_dec_arcsec)), u.deg).to_value(u.deg) + 360.0) % 360.0
-        lines.append(f"Delta_RA: {delta_ra_arcsec:+.2f} arcsec")
-        lines.append(f"Delta_Dec: {delta_dec_arcsec:+.2f} arcsec")
+        lines.append(f"Delta_RA : {delta_ra_arcsec:.2f}\"")
+        lines.append(f"Delta_Dec: {delta_dec_arcsec:+.2f}\"")
+        lines.append(f"Offset from target: {coord.separation(target_coord).arcsec:.2f}\"")
         lines.append(f"PA E of N: {pa_e_of_n:.2f} deg")
-        lines.append(f"Offset from target: {coord.separation(target_coord).arcsec:.2f} arcsec")
     return "\n".join(lines)
 
 
-def format_optional(value: float | None, suffix: str) -> str:
+def format_optional(value: float | None, suffix: str, missing: str = "not available") -> str:
     if value is None:
-        return "not available"
+        return missing
     return f"{value:.3f}{suffix}"

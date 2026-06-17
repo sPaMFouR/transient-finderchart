@@ -24,19 +24,21 @@ struct NumericSlider: View {
     let digits: Int
 
     var body: some View {
-        GridRow {
-            Text(title)
-                .font(AppFont.body(12))
-                .foregroundStyle(Palette.textSecondary)
-                .frame(width: 76, alignment: .leading)
-            Slider(value: $value, in: range, step: step)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(title)
+                    .font(AppFont.body(12))
+                    .foregroundStyle(Palette.textSecondary)
+                Spacer()
+                Text("\(Fmt.fixed(value, digits)) \(unit)")
+                    .font(AppFont.mono(11))
+                    .foregroundStyle(Palette.textPrimary)
+                    .monospacedDigit()
+            }
+            Slider(value: $value, in: range)
                 .tint(Palette.violet)
-            Text("\(Fmt.fixed(value, digits)) \(unit)")
-                .font(AppFont.mono(11))
-                .foregroundStyle(Palette.textPrimary)
-                .frame(width: 74, alignment: .trailing)
-                .monospacedDigit()
         }
+        .gridCellColumns(3)
     }
 }
 

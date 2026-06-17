@@ -126,7 +126,9 @@ final class PipelineViewModel: ObservableObject {
         runBridge(action: "render", statusText: "Rendering chart...") { output in
             self.result = output
             self.catalogSources = output.catalogSources ?? self.catalogSources
-            self.selectedCatalogDetail = output.selectedCatalogDetail ?? self.selectedCatalogDetail
+            if let detail = output.selectedCatalogDetail, !detail.isEmpty || self.params.selectedCatalogSourceID.isEmpty {
+                self.selectedCatalogDetail = detail
+            }
             self.status = output.message ?? "Chart rendered."
         }
     }
@@ -144,9 +146,13 @@ final class PipelineViewModel: ObservableObject {
 
     func clearCatalog() {
         params.catalogCachePath = ""
-        params.selectedCatalogSourceID = ""
         params.queryCatalog = false
         catalogSources = []
+        scheduleLiveRender()
+    }
+
+    func clearCatalogSelection() {
+        params.selectedCatalogSourceID = ""
         selectedCatalogDetail = ""
         scheduleLiveRender()
     }

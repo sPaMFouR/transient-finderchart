@@ -33,7 +33,7 @@ struct PipelineParams: Codable, Equatable {
     var queryCatalog: Bool = false
     var catalogName: String = "Gaia DR3"
     var catalogMaxMagnitude: Double? = 21.0
-    var catalogMaxDistanceArcsec: Double? = nil
+    var catalogMaxDistanceArcsec: Double? = 10.0
     var selectedCatalogSourceID: String = ""
     var imageCachePath: String = ""
     var catalogCachePath: String = ""

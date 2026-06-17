@@ -16,7 +16,7 @@ struct ControlSidebar: View {
             }
             .padding(16)
         }
-        .frame(width: 266)
+        .frame(width: 300)
     }
 
     private var targetSection: some View {
@@ -174,7 +174,7 @@ struct ControlSidebar: View {
                 Button {
                     vm.clearCatalog()
                 } label: {
-                    Label("Clear X", systemImage: "xmark.circle")
+                    Label("Clear", systemImage: "xmark.circle")
                         .font(AppFont.body(12).weight(.semibold))
                         .padding(.horizontal, 10)
                         .frame(height: 34)
@@ -192,9 +192,7 @@ struct ControlSidebar: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             if !vm.selectedCatalogDetail.isEmpty {
                 Button {
-                    if let source = vm.catalogSources.first(where: { $0.id == vm.params.selectedCatalogSourceID }) {
-                        vm.selectCatalogSource(source)
-                    }
+                    vm.clearCatalogSelection()
                 } label: {
                     Label("Clear Selection", systemImage: "xmark.circle")
                         .font(AppFont.body(12).weight(.semibold))

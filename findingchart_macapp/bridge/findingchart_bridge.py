@@ -81,9 +81,12 @@ def _target_with_current_label(target, payload: dict[str, Any]):
     label = str(payload.get("targetName") or "").strip()
     if not label:
         return target
+    if label in {target.label, target.display_name, target.tns_name}:
+        return target
     updated = copy.copy(target)
     updated.display_name = label
-    updated.aliases = []
+    tns_label = target.display_name or target.tns_name
+    updated.aliases = [tns_label] if tns_label and tns_label.lower() != label.lower() else []
     return updated
 
 
@@ -93,7 +96,20 @@ def _source_payload(source, target=None) -> dict[str, Any]:
     from astropy.coordinates import SkyCoord
 
     coord = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
-    lines = [f"Parallax : {_format_optional(source.parallax_mas, ' mas', missing='------')}"]
+    ra = coord.ra.to_string(unit=u.hour, sep=":", precision=3, pad=True)
+    dec = coord.dec.to_string(unit=u.deg, sep=":", precision=2, alwayssign=True, pad=True)
+    lines = [
+        source.label,
+        f"Catalog: {source.catalog}",
+        f"RA: {ra}",
+        f"Dec: {dec}",
+    ]
+    if source.magnitude is not None:
+        band = f" {source.magnitude_band}" if source.magnitude_band else ""
+        lines.append(f"Magnitude{band}: {source.magnitude:.3f}")
+    lines.append(f"Parallax : {_format_optional(source.parallax_mas, ' mas', missing='------')}")
+    lines.append(f"PM RA: {_format_optional(source.pmra_mas_per_year, ' mas/yr', missing='-----')}")
+    lines.append(f"PM Dec: {_format_optional(source.pmdec_mas_per_year, ' mas/yr', missing='-----')}")
     separation_arcsec = None
     delta_ra_arcsec = None
     delta_dec_arcsec = None
@@ -105,7 +121,7 @@ def _source_payload(source, target=None) -> dict[str, Any]:
         delta_dec_arcsec = float(delta_dec.to_value(u.arcsec))
         pa_e_of_n = float((u.Quantity(np.degrees(np.arctan2(delta_ra_arcsec, delta_dec_arcsec)), u.deg).to_value(u.deg) + 360.0) % 360.0)
         separation_arcsec = float(coord.separation(target_coord).arcsec)
-        lines.append(f"Delta_RA : {delta_ra_arcsec:+.2f}\"")
+        lines.append(f"Delta_RA : {delta_ra_arcsec:.2f}\"")
         lines.append(f"Delta_Dec: {delta_dec_arcsec:+.2f}\"")
         lines.append(f"Offset from target: {separation_arcsec:.2f}\"")
         lines.append(f"PA E of N: {pa_e_of_n:.2f} deg")
