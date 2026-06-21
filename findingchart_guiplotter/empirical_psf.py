@@ -327,6 +327,104 @@ def radial_profile(psf: np.ndarray, bins: int | None = None) -> tuple[np.ndarray
     return centers, profile
 
 
+def measure_psf_fwhm(psf: np.ndarray, bins: int | None = None) -> float:
+    data = np.asarray(psf, dtype=float)
+    ny, nx = data.shape
+    cy = ny // 2
+    cx = nx // 2
+    peak = float(data[cy, cx])
+    if not np.isfinite(peak) or peak <= 0:
+        raise EmpiricalPSFError("PSF peak is not usable for FWHM measurement")
+    profiles = [
+        np.asarray(data[cy, cx:], dtype=float),
+        np.asarray(data[cy, : cx + 1], dtype=float)[::-1],
+        np.asarray(data[cy:, cx], dtype=float),
+        np.asarray(data[: cy + 1, cx], dtype=float)[::-1],
+    ]
+    length = min(len(profile) for profile in profiles)
+    profile = np.nanmean(np.stack([profile[:length] for profile in profiles], axis=0), axis=0)
+    monotonic = np.minimum.accumulate(profile)
+    half_max = 0.5 * peak
+    below = np.where(monotonic <= half_max)[0]
+    if below.size == 0:
+        raise EmpiricalPSFError("PSF profile never reaches half-maximum inside the stamp")
+    idx = int(below[0])
+    if idx == 0:
+        radius = 0.0
+    else:
+        r0 = float(idx - 1)
+        r1 = float(idx)
+        p0 = float(monotonic[idx - 1])
+        p1 = float(monotonic[idx])
+        if not np.isfinite(p0) or not np.isfinite(p1) or p0 == p1:
+            radius = r1
+        else:
+            radius = r0 + (half_max - p0) * (r1 - r0) / (p1 - p0)
+    return 2.0 * max(radius, 0.0)
+
+
+def measurement_plane(data: np.ndarray) -> np.ndarray:
+    plane = np.asarray(data, dtype=float)
+    while plane.ndim > 3:
+        plane = plane[0]
+    if plane.ndim == 3:
+        if plane.shape[0] in (3, 4) and plane.shape[-1] not in (3, 4):
+            plane = np.moveaxis(plane[:3], 0, -1)
+        if plane.shape[-1] >= 3:
+            return 0.2126 * plane[..., 0] + 0.7152 * plane[..., 1] + 0.0722 * plane[..., 2]
+        return np.nanmean(plane, axis=-1)
+    return np.squeeze(plane)
+
+
+def _estimate_field_fwhm_once(
+    data: np.ndarray,
+    *,
+    fwhm_guess_pix: float,
+    threshold_sigma: float,
+    exclude_xy: tuple[float, float] | None,
+    exclude_radius: float | None,
+) -> tuple[float, int]:
+    guess = max(float(fwhm_guess_pix), 1.0)
+    stamp_size = odd_stamp_size(guess)
+    coords, _, _ = detect_field_stars(
+        data,
+        fwhm_pix=guess,
+        threshold_sigma=threshold_sigma,
+        stamp_size=stamp_size,
+        max_stars=30,
+        exclude_xy=exclude_xy,
+        exclude_radius=max(float(exclude_radius or 0.0), 10.0, 3.0 * guess),
+    )
+    kernel, used_coords, _ = build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=3)
+    return measure_psf_fwhm(kernel), len(used_coords)
+
+
+def estimate_field_fwhm(
+    data: np.ndarray,
+    *,
+    fwhm_guess_pix: float = 4.0,
+    threshold_sigma: float = 5.0,
+    exclude_xy: tuple[float, float] | None = None,
+    exclude_radius: float | None = None,
+) -> tuple[float, int]:
+    plane = measurement_plane(data)
+    first_fwhm, _ = _estimate_field_fwhm_once(
+        plane,
+        fwhm_guess_pix=fwhm_guess_pix,
+        threshold_sigma=threshold_sigma,
+        exclude_xy=exclude_xy,
+        exclude_radius=exclude_radius,
+    )
+    refined_guess = float(np.clip(first_fwhm, 1.0, 12.0))
+    return _estimate_field_fwhm_once(
+        plane,
+        fwhm_guess_pix=refined_guess,
+        threshold_sigma=threshold_sigma,
+        exclude_xy=exclude_xy,
+        exclude_radius=exclude_radius,
+    )
+
+
 def hybridize_injected_psf(psf: np.ndarray, fwhm_pix: float, beta: float = 4.5) -> np.ndarray:
     empirical = circularize_psf(psf)
     target_size = injection_stamp_size(fwhm_pix, empirical.shape[0])

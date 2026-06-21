@@ -80,6 +80,12 @@ final class PipelineViewModel: ObservableObject {
             if let cache = output.imageCachePath {
                 self.params.imageCachePath = cache
             }
+            if let measuredFwhm = output.measuredFwhmArcsec {
+                self.params.psfFwhmArcsec = measuredFwhm
+            }
+            if let recommendedMagnitude = output.recommendedPsfMagnitude {
+                self.params.psfMagnitude = recommendedMagnitude
+            }
             if let vmin = output.defaultVmin {
                 self.params.vmin = vmin
             }
@@ -266,6 +272,9 @@ final class PipelineViewModel: ObservableObject {
             mode: existing?.mode,
             sourceURL: existing?.sourceURL,
             pixelScaleArcsec: existing?.pixelScaleArcsec,
+            measuredFwhmArcsec: output.measuredFwhmArcsec ?? existing?.measuredFwhmArcsec,
+            measuredFwhmStarCount: output.measuredFwhmStarCount ?? existing?.measuredFwhmStarCount,
+            recommendedPsfMagnitude: output.recommendedPsfMagnitude ?? existing?.recommendedPsfMagnitude,
             catalogCount: output.catalogCount,
             slitPaDeg: existing?.slitPaDeg,
             message: output.message,

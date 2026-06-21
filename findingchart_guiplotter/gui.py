@@ -53,7 +53,14 @@ from .image_fetchers import (
 from .mpl_compat import ensure_astropy_wcsaxes_compat
 from .models import ChartSettings, ImageData, ImageRequest, Target
 from .observatories import OBSERVATORIES, parallactic_angle_deg
-from .renderer import draw_chart, export_chart, pixel_scale_arcsec, world_to_scalar_pixel
+from .renderer import (
+    draw_chart,
+    export_chart,
+    measured_image_fwhm_arcsec,
+    pixel_scale_arcsec,
+    recommended_injected_magnitude,
+    world_to_scalar_pixel,
+)
 from .tns import TNSClient, TNSLookupError
 
 
@@ -150,6 +157,24 @@ class ChartCanvas(FigureCanvas):
             if distance <= tolerance_pix and (nearest is None or distance < nearest[0]):
                 nearest = (distance, source)
         return nearest[1] if nearest is not None else None
+
+
+def load_image_with_fwhm_estimate(target: Target, request: ImageRequest) -> tuple[ImageData, float | None, int | None, float | None]:
+    image = fetch_image(target, request)
+    try:
+        measured_fwhm_arcsec, measured_star_count = measured_image_fwhm_arcsec(image, target)
+    except Exception:
+        measured_fwhm_arcsec, measured_star_count = None, None
+    try:
+        recommended_magnitude = recommended_injected_magnitude(
+            image,
+            target,
+            target_snr=20.0,
+            fwhm_arcsec=measured_fwhm_arcsec,
+        )
+    except Exception:
+        recommended_magnitude = None
+    return image, measured_fwhm_arcsec, measured_star_count, recommended_magnitude
 
 
 class MainWindow(QMainWindow):
@@ -294,7 +319,7 @@ class MainWindow(QMainWindow):
         self.inject_check = QCheckBox("Show empirical PSF")
         self.inject_check.setChecked(True)
         self.magnitude_spin = QDoubleSpinBox()
-        self.magnitude_spin.setRange(14.0, 20.0)
+        self.magnitude_spin.setRange(8.0, 24.0)
         self.magnitude_spin.setValue(18.0)
         self.magnitude_spin.setDecimals(1)
         self.magnitude_spin.setSuffix(" mag")
@@ -569,13 +594,35 @@ class MainWindow(QMainWindow):
             size_arcmin=self.size_spin.value(),
             pixel_scale_arcsec=self.pixscale_spin.value(),
         )
-        self._run_worker("Loading image cutout...", fetch_image, self._image_loaded, self.target, request)
+        self._run_worker("Loading image cutout...", load_image_with_fwhm_estimate, self._image_loaded, self.target, request)
 
-    def _image_loaded(self, image: ImageData) -> None:
+    def _image_loaded(self, result: tuple[ImageData, float | None, int | None, float | None]) -> None:
         self.load_button.setEnabled(True)
+        image, measured_fwhm_arcsec, measured_star_count, recommended_magnitude = result
         self.image = image
+        if measured_fwhm_arcsec is not None:
+            self.fwhm_spin.blockSignals(True)
+            self.fwhm_spin.setValue(float(measured_fwhm_arcsec))
+            self.fwhm_spin.blockSignals(False)
+        if recommended_magnitude is not None:
+            self.magnitude_spin.blockSignals(True)
+            self.magnitude_spin.setValue(float(recommended_magnitude))
+            self.magnitude_spin.blockSignals(False)
         self.reset_contrast_from_image()
-        self.status_label.setText(f"Loaded {image.survey} {image.band}")
+        if measured_fwhm_arcsec is not None and measured_star_count is not None and recommended_magnitude is not None:
+            self.status_label.setText(
+                f"Loaded {image.survey} {image.band} (field FWHM {measured_fwhm_arcsec:.2f}\" from {measured_star_count} stars, SN {recommended_magnitude:.1f} mag ~20 sigma)"
+            )
+        elif measured_fwhm_arcsec is not None and measured_star_count is not None:
+            self.status_label.setText(
+                f"Loaded {image.survey} {image.band} (field FWHM {measured_fwhm_arcsec:.2f}\" from {measured_star_count} stars)"
+            )
+        elif recommended_magnitude is not None:
+            self.status_label.setText(
+                f"Loaded {image.survey} {image.band} (SN {recommended_magnitude:.1f} mag ~20 sigma)"
+            )
+        else:
+            self.status_label.setText(f"Loaded {image.survey} {image.band}")
         self.update_chart_from_controls()
 
     def _worker_failed(self, message: str) -> None:

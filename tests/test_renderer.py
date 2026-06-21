@@ -11,6 +11,7 @@ from findingchart_guiplotter.renderer import (
     apply_rgb_stretch,
     arcsec_label,
     estimate_catalog_flux_scale,
+    recommended_injected_magnitude,
     injected_reference_mag,
     magnitude_flux_scale,
     catalog_source_color,
@@ -23,6 +24,7 @@ from findingchart_guiplotter.renderer import (
     marker_unit_vectors,
     world_to_scalar_pixel,
 )
+from findingchart_guiplotter.empirical_psf import inject_psf, moffat_kernel
 
 
 def test_centered_wcs_maps_target_to_displayed_pixel_center():
@@ -197,3 +199,30 @@ def test_catalog_flux_scale_uses_loaded_catalog_sources_as_zero_point():
 def test_catalog_source_colors_distinguish_catalogs():
     assert catalog_source_color(type("Source", (), {"catalog": "Gaia DR3"})()) == "cyan"
     assert catalog_source_color(type("Source", (), {"catalog": "Pan-STARRS DR2"})()) == "lightcoral"
+
+
+def test_recommended_injected_magnitude_gets_brighter_for_higher_target_snr():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.random.default_rng(123).normal(0.0, 0.5, size=(181, 181)),
+        wcs=centered_tan_wcs(target, nx=181, ny=181, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    kernel = moffat_kernel(4.0, size=81)
+    for x, y, flux in [
+        (40.0, 42.0, 1800.0),
+        (92.0, 55.0, 1600.0),
+        (138.0, 68.0, 1700.0),
+        (58.0, 126.0, 1500.0),
+        (126.0, 134.0, 1750.0),
+    ]:
+        image.data = inject_psf(image.data, kernel, x=x, y=y, flux=flux)
+
+    mag_10sigma = recommended_injected_magnitude(image, target, target_snr=10.0, fwhm_arcsec=2.0)
+    mag_40sigma = recommended_injected_magnitude(image, target, target_snr=40.0, fwhm_arcsec=2.0)
+
+    assert 8.0 <= mag_10sigma <= 24.0
+    assert 8.0 <= mag_40sigma <= 24.0
+    assert mag_40sigma < mag_10sigma

@@ -11,7 +11,7 @@ from urllib.parse import unquote, urlparse
 from .catalog import query_catalog_sources
 from .image_fetchers import fetch_image, mode_and_band_from_filter_choice, preferred_filter_choice
 from .models import ChartSettings, ImageRequest, Target
-from .renderer import export_chart
+from .renderer import export_chart, measured_image_fwhm_arcsec
 
 
 WEB_OUTPUT_DIR = Path("web_exports")
@@ -102,11 +102,17 @@ def render_from_payload(payload: dict) -> str:
     if catalog != "None":
         catalog_sources = query_catalog_sources(target, request.size_arcmin / 2.0, catalog)
     image = fetch_image(target, request)
+    measured_fwhm_arcsec = None
+    try:
+        measured_fwhm_arcsec, _ = measured_image_fwhm_arcsec(image, target)
+    except Exception:
+        pass
     settings = ChartSettings(
         slit_width_arcsec=float(payload.get("slit_width_arcsec") or 2.0),
         slit_length_arcsec=float(payload.get("slit_length_arcsec") or 20.0),
         slit_pa_deg=float(payload.get("slit_pa_deg") or 0.0),
         psf_magnitude=float(payload.get("psf_magnitude") or 18.0),
+        psf_fwhm_arcsec=float(payload.get("psf_fwhm_arcsec") or measured_fwhm_arcsec or 1.0),
         psf_model=str(payload.get("psf_model") or "empirical core"),
         show_slit=payload_bool(payload, "show_slit", False),
         show_injected_source=payload_bool(payload, "show_injected_source", True),
@@ -206,7 +212,7 @@ INDEX_HTML = """<!doctype html>
           <legend>Overlays</legend>
           <label>Catalog <select name="catalog"><option>None</option><option>Gaia DR3</option><option>Pan-STARRS DR2</option><option>Gaia DR3 + Pan-STARRS DR2</option></select></label>
           <label class="check"><input type="checkbox" name="show_injected_source" checked> Inject SN</label>
-          <label>SN mag <input name="psf_magnitude" type="number" min="14" max="20" step="0.1" value="18.0"></label>
+          <label>SN mag <input name="psf_magnitude" type="number" min="8" max="24" step="0.1" value="18.0"></label>
           <label>PSF model <select name="psf_model"><option>empirical core</option><option>empirical hybrid</option><option>moffat</option></select></label>
           <label>Zoom-in panel <input name="inset_zoom_factor" type="range" min="3" max="12" step="1" value="6"></label>
           <label class="check"><input type="checkbox" name="show_crosshair" checked> Crosshair</label>

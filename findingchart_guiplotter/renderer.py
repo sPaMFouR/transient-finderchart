@@ -12,6 +12,7 @@ import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.coordinates import SkyCoord
+from astropy.stats import sigma_clipped_stats
 from astropy.visualization import AsinhStretch, ImageNormalize, LinearStretch, LogStretch, PercentileInterval, SqrtStretch
 from astropy.wcs.utils import proj_plane_pixel_scales
 from matplotlib.figure import Figure
@@ -21,8 +22,10 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from .empirical_psf import (
     EmpiricalPSFError,
     empirical_psf_from_field,
+    estimate_field_fwhm,
     inject_psf,
     injection_stamp_size,
+    measurement_plane,
     moffat_kernel,
     normalize_psf_model,
 )
@@ -87,6 +90,77 @@ apply_project_style()
 def pixel_scale_arcsec(image: ImageData) -> float:
     scales = proj_plane_pixel_scales(image.wcs) * 3600.0
     return float(np.nanmean(np.abs(scales)))
+
+
+def measured_image_fwhm_arcsec(image: ImageData, target: Target | None = None) -> tuple[float, int]:
+    scale = pixel_scale_arcsec(image)
+    if not np.isfinite(scale) or scale <= 0:
+        raise EmpiricalPSFError("image pixel scale is not usable for FWHM estimation")
+    exclude_xy = None
+    if target is not None:
+        x0, y0 = world_to_scalar_pixel(image, SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg))
+        if np.isfinite(x0) and np.isfinite(y0):
+            exclude_xy = (x0, y0)
+    fwhm_guess_pix = float(np.clip(1.0 / scale, 2.0, 6.0))
+    fwhm_pix, star_count = estimate_field_fwhm(
+        image.data,
+        fwhm_guess_pix=fwhm_guess_pix,
+        exclude_xy=exclude_xy,
+        exclude_radius=max(10.0, 3.0 * fwhm_guess_pix) if exclude_xy is not None else None,
+    )
+    return fwhm_pix * scale, star_count
+
+
+def recommended_injected_magnitude(
+    image: ImageData,
+    target: Target | None = None,
+    *,
+    target_snr: float = 20.0,
+    fwhm_arcsec: float | None = None,
+    psf_model: str = "empirical core",
+) -> float:
+    scale = pixel_scale_arcsec(image)
+    if not np.isfinite(scale) or scale <= 0:
+        raise EmpiricalPSFError("image pixel scale is not usable for injected-source brightness estimation")
+    if fwhm_arcsec is None:
+        fwhm_arcsec, _ = measured_image_fwhm_arcsec(image, target)
+    fwhm_pix = max(float(fwhm_arcsec) / scale, 1.0)
+    plane = measurement_plane(image.data)
+    finite = plane[np.isfinite(plane)]
+    if finite.size == 0:
+        raise EmpiricalPSFError("image contains no finite pixels for brightness estimation")
+    _, median, sigma = sigma_clipped_stats(finite, sigma=3.0, maxiters=5)
+    if not np.isfinite(sigma) or sigma <= 0:
+        raise EmpiricalPSFError("image background scatter is not usable for brightness estimation")
+    x0 = y0 = None
+    if target is not None:
+        tx, ty = world_to_scalar_pixel(image, SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg))
+        if np.isfinite(tx) and np.isfinite(ty):
+            x0, y0 = tx, ty
+    if image.data.ndim == 3:
+        kernel = moffat_kernel(fwhm_pix, size=injection_stamp_size(fwhm_pix, empirical_size=25))
+        base_flux = rgb_visual_flux(ChartSettings(psf_magnitude=18.0))
+    else:
+        if x0 is None or y0 is None:
+            raise EmpiricalPSFError("target coordinates are required for grayscale brightness estimation")
+        try:
+            kernel, _, psf_star_fluxes = empirical_psf_from_field(plane, x0, y0, fwhm_pix=fwhm_pix, psf_model=psf_model)
+            median_star_flux = float(np.nanmedian(psf_star_fluxes))
+            if not np.isfinite(median_star_flux) or median_star_flux <= 0:
+                raise EmpiricalPSFError("empirical PSF stars do not provide a usable brightness scale")
+            base_flux = 0.25 * median_star_flux
+        except (EmpiricalPSFError, ValueError, RuntimeError):
+            kernel = moffat_kernel(fwhm_pix, size=injection_stamp_size(fwhm_pix, empirical_size=25))
+            p50, p99 = np.nanpercentile(finite, [50, 99])
+            base_flux = max(p99 - p50, np.nanstd(finite), 1.0)
+    kernel_energy = float(np.sum(np.square(kernel)))
+    if not np.isfinite(kernel_energy) or kernel_energy <= 0:
+        raise EmpiricalPSFError("PSF kernel is not usable for brightness estimation")
+    desired_flux = float(target_snr) * float(sigma) / math.sqrt(kernel_energy)
+    desired_flux = max(desired_flux, 1.0e-12)
+    reference_flux = max(float(base_flux), 1.0e-12)
+    magnitude = 18.0 - 2.5 * math.log10(desired_flux / reference_flux)
+    return float(np.clip(magnitude, 8.0, 24.0))
 
 
 def image_fov_arcsec(image: ImageData) -> float:

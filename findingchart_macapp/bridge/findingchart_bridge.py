@@ -251,7 +251,12 @@ def _image_request(payload: dict[str, Any]):
 def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
     from findingchart_guiplotter.image_fetchers import fetch_image
     from findingchart_guiplotter.models import ChartSettings
-    from findingchart_guiplotter.renderer import contrast_limits, pixel_scale_arcsec
+    from findingchart_guiplotter.renderer import (
+        contrast_limits,
+        measured_image_fwhm_arcsec,
+        pixel_scale_arcsec,
+        recommended_injected_magnitude,
+    )
 
     target = _parse_target(payload)
     request = _image_request(payload)
@@ -262,6 +267,22 @@ def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
         contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
     )
     default_vmin, default_vmax = contrast_limits(image.data, guide_settings)
+    measured_fwhm_arcsec = None
+    measured_fwhm_star_count = None
+    recommended_psf_magnitude = None
+    try:
+        measured_fwhm_arcsec, measured_fwhm_star_count = measured_image_fwhm_arcsec(image, target)
+    except Exception:
+        pass
+    try:
+        recommended_psf_magnitude = recommended_injected_magnitude(
+            image,
+            target,
+            target_snr=20.0,
+            fwhm_arcsec=measured_fwhm_arcsec,
+        )
+    except Exception:
+        pass
     cache_path = _state_dir(repo_dir) / f"{_safe_name(target.label)}_{_safe_name(image.survey)}_{_safe_name(image.band)}.pkl"
     with cache_path.open("wb") as handle:
         pickle.dump({"target": target, "request": request, "image": image}, handle)
@@ -275,9 +296,24 @@ def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
         "mode": image.mode,
         "sourceURL": image.source_url,
         "pixelScaleArcsec": pixel_scale_arcsec(image),
+        "measuredFwhmArcsec": measured_fwhm_arcsec,
+        "measuredFwhmStarCount": measured_fwhm_star_count,
+        "recommendedPsfMagnitude": recommended_psf_magnitude,
         "defaultVmin": default_vmin,
         "defaultVmax": default_vmax,
-        "message": f"Loaded {image.survey} {image.band}",
+        "message": (
+            f"Loaded {image.survey} {image.band}"
+            + (
+                f" (field FWHM {measured_fwhm_arcsec:.2f}\" from {measured_fwhm_star_count} stars)"
+                if measured_fwhm_arcsec is not None and measured_fwhm_star_count is not None
+                else ""
+            )
+            + (
+                f", default SN brightness {recommended_psf_magnitude:.1f} mag (~20 sigma)"
+                if recommended_psf_magnitude is not None
+                else ""
+            )
+        ),
     }
 
 

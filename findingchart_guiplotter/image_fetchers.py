@@ -123,6 +123,27 @@ def _read_fits_from_bytes(payload: bytes, survey: str, band: str, mode: str, url
     return ImageData(data=data, wcs=wcs.celestial, survey=survey, band=band, mode=mode, source_url=url)
 
 
+def _legacy_placeholder_tile(rgb_data: np.ndarray) -> bool:
+    data = np.asarray(rgb_data, dtype=float)
+    if data.ndim != 3 or data.shape[-1] < 3:
+        return False
+    flattened = data.reshape(-1, data.shape[-1])
+    channel_spread = np.nanstd(flattened[:, :3], axis=0)
+    return bool(np.nanmax(channel_spread) <= (0.5 / 255.0))
+
+
+def _legacy_jpeg_array(image: Image.Image, mode: str) -> np.ndarray:
+    rgb_data = np.asarray(image.convert("RGB"), dtype=float) / 255.0
+    if _legacy_placeholder_tile(rgb_data):
+        raise ImageFetchError(
+            "Legacy Survey JPEG fallback returned a flat placeholder tile. "
+            "This usually means the selected Legacy Survey layer has no usable image coverage at this coordinate."
+        )
+    if mode == "Single band":
+        return np.asarray(image.convert("L"), dtype=float) / 255.0
+    return rgb_data
+
+
 def _request_bytes(url: str, timeout: float = 120.0) -> bytes:
     response = requests.get(url, timeout=timeout)
     if response.status_code >= 400:
@@ -232,13 +253,15 @@ def fetch_legacy_jpeg_fallback(target: Target, request: ImageRequest, band: str,
     url = "https://www.legacysurvey.org/viewer/jpeg-cutout?" + urlencode(params)
     payload = _request_bytes(url)
     try:
-        image = Image.open(io.BytesIO(payload)).convert("RGB")
+        image = Image.open(io.BytesIO(payload))
+        data = _legacy_jpeg_array(image, request.mode)
+    except ImageFetchError as exc:
+        raise ImageFetchError(f"{exc} Original FITS error: {reason}") from exc
     except Exception as exc:
         raise ImageFetchError(
             "Legacy Survey FITS cutout failed, and the JPEG fallback could not be decoded. "
             f"Original FITS error: {reason}"
         ) from exc
-    data = np.asarray(image, dtype=float) / 255.0
     wcs = centered_tan_wcs(target, data.shape[1], data.shape[0], request.pixel_scale_arcsec)
     return ImageData(data=data, wcs=wcs, survey="Legacy Survey", band=band, mode=request.mode, source_url=url)
 

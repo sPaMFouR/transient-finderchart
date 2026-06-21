@@ -56,6 +56,9 @@ struct PipelineResult: Codable {
     var mode: String?
     var sourceURL: String?
     var pixelScaleArcsec: Double?
+    var measuredFwhmArcsec: Double?
+    var measuredFwhmStarCount: Int?
+    var recommendedPsfMagnitude: Double?
     var catalogCount: Int?
     var slitPaDeg: Double?
     var message: String?

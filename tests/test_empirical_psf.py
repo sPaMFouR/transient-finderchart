@@ -3,8 +3,11 @@ import pytest
 
 from findingchart_guiplotter.empirical_psf import (
     circularize_psf,
+    estimate_field_fwhm,
     hybridize_injected_psf,
     inject_psf,
+    measure_psf_fwhm,
+    moffat_kernel,
     normalize_psf_model,
     radial_edge_taper,
     select_injected_psf_model,
@@ -113,3 +116,29 @@ def test_psf_model_selection_can_choose_moffat_or_hybrid():
 
     assert moffat.shape[0] > psf.shape[0]
     assert hybrid.shape[0] > psf.shape[0]
+
+
+def test_measure_psf_fwhm_recovers_moffat_kernel_width():
+    kernel = moffat_kernel(4.0, size=81)
+
+    measured = measure_psf_fwhm(kernel)
+
+    assert measured == pytest.approx(4.0, rel=0.12)
+
+
+def test_estimate_field_fwhm_recovers_synthetic_field_width():
+    data = np.zeros((181, 181), dtype=float)
+    kernel = moffat_kernel(4.2, size=81)
+    for x, y, flux in [
+        (40.0, 42.0, 1800.0),
+        (92.0, 55.0, 1600.0),
+        (138.0, 68.0, 1700.0),
+        (58.0, 126.0, 1500.0),
+        (126.0, 134.0, 1750.0),
+    ]:
+        data = inject_psf(data, kernel, x=x, y=y, flux=flux)
+
+    measured, star_count = estimate_field_fwhm(data, fwhm_guess_pix=3.5)
+
+    assert star_count >= 3
+    assert measured == pytest.approx(4.2, rel=0.20)
