@@ -15,7 +15,7 @@ struct PipelineParams: Codable, Equatable {
     var pixelScaleArcsec: Double = 0.262
 
     var psfMagnitude: Double = 18.0
-    var psfModel: String = "empirical core"
+    var psfModel: String = "moffat"
     var psfFwhmArcsec: Double = 1.0
     var insetZoomFactor: Double = 6.0
     var showInjectedSource: Bool = true

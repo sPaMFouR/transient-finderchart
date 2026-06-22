@@ -60,7 +60,7 @@ class ChartSettings:
     slit_pa_deg: float = 0.0
     slit_pa_mode: str = "Fixed sky PA"
     psf_magnitude: float = 18.0
-    psf_model: str = "empirical core"
+    psf_model: str = "moffat"
     psf_fwhm_arcsec: float = 1.0
     show_injected_source: bool = True
     show_crosshair: bool = True

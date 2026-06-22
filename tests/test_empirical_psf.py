@@ -94,16 +94,15 @@ def test_hybrid_injected_psf_extends_support_and_stays_circular():
     assert hybrid[cy, cx + 20] > 0.0
 
 
-def test_psf_model_selection_defaults_to_empirical_core():
+def test_psf_model_selection_defaults_to_moffat():
     psf = np.zeros((31, 31))
     psf[15, 15] = 1.0
     psf /= psf.sum()
 
     selected = select_injected_psf_model(psf, fwhm_pix=2.0, psf_model="unknown")
 
-    assert normalize_psf_model("unknown") == "empirical core"
-    assert selected.shape == psf.shape
-    assert selected[15, 15] == pytest.approx(psf[15, 15])
+    assert normalize_psf_model("unknown") == "moffat"
+    assert selected.shape[0] > psf.shape[0]
 
 
 def test_psf_model_selection_can_choose_moffat_or_hybrid():

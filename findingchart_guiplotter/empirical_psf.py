@@ -460,12 +460,14 @@ def hybridize_injected_psf(psf: np.ndarray, fwhm_pix: float, beta: float = 4.5) 
 
 
 def normalize_psf_model(psf_model: str) -> str:
-    mode = (psf_model or "empirical core").strip().lower()
+    mode = (psf_model or "moffat").strip().lower()
     if mode in {"hybrid", "empirical hybrid"}:
         return "empirical hybrid"
     if mode in {"moffat", "analytic moffat"}:
         return "moffat"
-    return "empirical core"
+    if mode in {"core", "empirical", "empirical core"}:
+        return "empirical core"
+    return "moffat"
 
 
 def select_injected_psf_model(psf: np.ndarray, fwhm_pix: float, psf_model: str) -> np.ndarray:

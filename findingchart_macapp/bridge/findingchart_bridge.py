@@ -360,7 +360,7 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
         slit_pa_deg=slit_pa,
         slit_pa_mode="Parallactic Angle" if payload.get("useParallacticPA", False) else "Fixed sky PA",
         psf_magnitude=float(payload.get("psfMagnitude", 18.0)),
-        psf_model=str(payload.get("psfModel") or "empirical core"),
+        psf_model=str(payload.get("psfModel") or "moffat"),
         psf_fwhm_arcsec=float(payload.get("psfFwhmArcsec", 1.0)),
         show_injected_source=bool(payload.get("showInjectedSource", True)),
         show_crosshair=bool(payload.get("showCrosshair", True)),
