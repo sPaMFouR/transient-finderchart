@@ -32,7 +32,7 @@ final class PipelineViewModel: ObservableObject {
     var filterChoices: [String] {
         var choices: [String] = []
         if let colorBands = metadata?.bands?[params.survey]?["Color composite"], !colorBands.isEmpty {
-            choices.append("Color composite")
+            choices.append("color")
         }
         choices += metadata?.bands?[params.survey]?["Single band"] ?? ["g", "r", "i", "z", "y"]
         return choices
@@ -40,7 +40,7 @@ final class PipelineViewModel: ObservableObject {
 
     var selectedFilterChoice: String {
         if params.mode == "Color composite" {
-            return "Color composite"
+            return "color"
         }
         return params.band
     }
@@ -184,11 +184,11 @@ final class PipelineViewModel: ObservableObject {
     }
 
     func setFilterChoice(_ choice: String, resetImage: Bool = true) {
-        if choice == "Color composite", let band = metadata?.bands?[params.survey]?["Color composite"]?.first {
+        if choice == "color", let band = metadata?.bands?[params.survey]?["Color composite"]?.first {
             params.mode = "Color composite"
             params.band = band
         } else {
-            let singles = metadata?.bands?[params.survey]?["Single band"] ?? filterChoices.filter { $0 != "Color composite" }
+            let singles = metadata?.bands?[params.survey]?["Single band"] ?? filterChoices.filter { $0 != "color" }
             params.mode = "Single band"
             params.band = singles.contains(choice) ? choice : (singles.first ?? choice)
         }

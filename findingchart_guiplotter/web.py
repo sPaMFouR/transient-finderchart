@@ -113,12 +113,14 @@ def render_from_payload(payload: dict) -> str:
         slit_pa_deg=float(payload.get("slit_pa_deg") or 0.0),
         psf_magnitude=float(payload.get("psf_magnitude") or 18.0),
         psf_fwhm_arcsec=float(payload.get("psf_fwhm_arcsec") or measured_fwhm_arcsec or 1.0),
-        psf_model=str(payload.get("psf_model") or "empirical core"),
+        psf_model=str(payload.get("psf_model") or "moffat"),
         show_slit=payload_bool(payload, "show_slit", False),
         show_injected_source=payload_bool(payload, "show_injected_source", True),
         show_crosshair=payload_bool(payload, "show_crosshair", True),
         show_compass=payload_bool(payload, "show_compass", True),
         contrast_stretch=str(payload.get("contrast_stretch") or "arcsinh"),
+        colormap=str(payload.get("colormap") or "gray_r"),
+        annotation_color=str(payload.get("annotation_color") or "xkcd:bright red"),
         contrast_percentile=float(payload.get("contrast_percentile") or 99.3),
         inset_zoom_factor=float(payload.get("inset_zoom_factor") or 6.0),
         catalog_sources=catalog_sources,
@@ -200,8 +202,10 @@ INDEX_HTML = """<!doctype html>
         <fieldset>
           <legend>Image</legend>
           <label>Survey <select name="survey"><option>Pan-STARRS</option><option>Legacy Survey</option><option>DSS2</option><option>2MASS</option></select></label>
-          <label>Filter <select name="filter"><option>Color composite</option><option>g</option><option>r</option><option>i</option><option>z</option><option>y</option><option>red</option><option>blue</option><option>ir</option><option>J</option><option>H</option><option>K</option></select></label>
+          <label>Filter <select name="filter"><option>color</option><option>g</option><option>r</option><option>i</option><option>z</option><option>y</option><option>red</option><option>blue</option><option>ir</option><option>J</option><option>H</option><option>K</option></select></label>
           <label>Stretch <select name="contrast_stretch"><option>arcsinh</option><option>linear</option><option>sqrt</option><option>log</option></select></label>
+          <label>Colormap <select name="colormap"><option>gray_r</option><option>inferno</option><option>icefire</option><option>twilight</option><option>jet</option><option>turbo</option><option>Hiroshige</option><option>viridis</option><option>RdBu</option></select></label>
+          <label>Label color <select name="annotation_color"><option>xkcd:bright red</option><option>xkcd:dodger blue</option><option>xkcd:black</option><option>xkcd:white</option><option>xkcd:turquoise</option><option>xkcd:bright yellow</option></select></label>
           <div class="row">
             <label>Field arcmin <input name="size_arcmin" value="3.0"></label>
             <label>Pixscale <input name="pixel_scale_arcsec" value="0.262"></label>
@@ -213,7 +217,7 @@ INDEX_HTML = """<!doctype html>
           <label>Catalog <select name="catalog"><option>None</option><option>Gaia DR3</option><option>Pan-STARRS DR2</option><option>Gaia DR3 + Pan-STARRS DR2</option></select></label>
           <label class="check"><input type="checkbox" name="show_injected_source" checked> Inject SN</label>
           <label>SN mag <input name="psf_magnitude" type="number" min="8" max="24" step="0.1" value="18.0"></label>
-          <label>PSF model <select name="psf_model"><option>empirical core</option><option>empirical hybrid</option><option>moffat</option></select></label>
+          <label>PSF model <select name="psf_model"><option>moffat</option><option>empirical core</option><option>empirical hybrid</option></select></label>
           <label>Zoom-in panel <input name="inset_zoom_factor" type="range" min="3" max="12" step="1" value="6"></label>
           <label class="check"><input type="checkbox" name="show_crosshair" checked> Crosshair</label>
           <label class="check"><input type="checkbox" name="show_compass" checked> Compass</label>

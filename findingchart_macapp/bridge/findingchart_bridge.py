@@ -265,6 +265,8 @@ def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
         auto_contrast=True,
         contrast_percentile=float(payload.get("contrastPercentile") or 99.3),
         contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
+        colormap=str(payload.get("colormap") or "gray_r"),
+        annotation_color=str(payload.get("annotationColor") or "xkcd:bright red"),
     )
     default_vmin, default_vmax = contrast_limits(image.data, guide_settings)
     measured_fwhm_arcsec = None
@@ -374,6 +376,8 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
         vmin=float(payload["vmin"]) if payload.get("vmin") not in (None, "") else None,
         vmax=float(payload["vmax"]) if payload.get("vmax") not in (None, "") else None,
         contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
+        colormap=str(payload.get("colormap") or "gray_r"),
+        annotation_color=str(payload.get("annotationColor") or "xkcd:bright red"),
         contrast_percentile=float(payload.get("contrastPercentile") or 99.3),
         inset_zoom_factor=float(payload.get("insetZoomFactor") or 6.0),
     )

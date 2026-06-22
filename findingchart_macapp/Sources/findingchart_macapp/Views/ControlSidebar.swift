@@ -5,7 +5,7 @@ struct ControlSidebar: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 targetSection
                 archiveImageSection
                 injectedSourceSection
@@ -16,7 +16,7 @@ struct ControlSidebar: View {
             }
             .padding(16)
         }
-        .frame(width: 300)
+        .frame(width: 320)
     }
 
     private var targetSection: some View {
@@ -42,7 +42,7 @@ struct ControlSidebar: View {
     }
 
     private var archiveImageSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             SectionHeader(systemName: "photo", title: "Archive Image")
             Picker("Survey", selection: $vm.params.survey) {
                 ForEach(vm.surveys, id: \.self) { Text($0).tag($0) }
@@ -70,9 +70,9 @@ struct ControlSidebar: View {
                 NumericSlider(title: "Inset zoom", unit: "x", value: $vm.params.insetZoomFactor, range: 3.0...12.0, step: 1.0, digits: 0)
             }
             Picker("PSF model", selection: $vm.params.psfModel) {
+                Text("moffat").tag("moffat")
                 Text("empirical core").tag("empirical core")
                 Text("empirical hybrid").tag("empirical hybrid")
-                Text("moffat").tag("moffat")
             }
         }
         .glassCard()
@@ -84,10 +84,29 @@ struct ControlSidebar: View {
     }
 
     private var contrastSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             SectionHeader(systemName: "camera.filters", title: "Contrast")
             Toggle("Auto contrast", isOn: $vm.params.autoContrast)
                 .toggleStyle(.checkbox)
+            Picker("Colormap", selection: $vm.params.colormap) {
+                Text("gray_r").tag("gray_r")
+                Text("inferno").tag("inferno")
+                Text("icefire").tag("icefire")
+                Text("twilight").tag("twilight")
+                Text("jet").tag("jet")
+                Text("turbo").tag("turbo")
+                Text("Hiroshige").tag("Hiroshige")
+                Text("viridis").tag("viridis")
+                Text("RdBu").tag("RdBu")
+            }
+            Picker("Label color", selection: $vm.params.annotationColor) {
+                Text("xkcd:bright red").tag("xkcd:bright red")
+                Text("xkcd:dodger blue").tag("xkcd:dodger blue")
+                Text("xkcd:black").tag("xkcd:black")
+                Text("xkcd:white").tag("xkcd:white")
+                Text("xkcd:turquoise").tag("xkcd:turquoise")
+                Text("xkcd:bright yellow").tag("xkcd:bright yellow")
+            }
             Picker("Stretch", selection: $vm.params.contrastStretch) {
                 Text("arcsinh").tag("arcsinh")
                 Text("linear").tag("linear")
@@ -113,6 +132,8 @@ struct ControlSidebar: View {
         .onChange(of: vm.params.showCompass) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.autoContrast) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.contrastStretch) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.colormap) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.annotationColor) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.contrastPercentile) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.vmin) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.vmax) { _, _ in vm.scheduleLiveRender() }

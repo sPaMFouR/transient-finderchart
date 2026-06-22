@@ -207,7 +207,7 @@ class MainWindow(QMainWindow):
 
     def _build_sidebar(self) -> QWidget:
         tabs = QTabWidget()
-        tabs.setMaximumWidth(410)
+        tabs.setMaximumWidth(320)
         tabs.addTab(self._build_target_archive_tab(), "Target / Archive")
         tabs.addTab(self._build_chart_catalog_tab(), "Slit / Catalog")
         return tabs
@@ -266,6 +266,7 @@ class MainWindow(QMainWindow):
         self.load_button.clicked.connect(self.load_image)
         self.survey_combo.currentTextChanged.connect(self.update_filter_choices)
         self.update_filter_choices()
+        form.setVerticalSpacing(6)
         form.addRow("Survey", self.survey_combo)
         form.addRow("Filter", self.filter_combo)
         form.addRow("Field", self.size_spin)
@@ -280,6 +281,14 @@ class MainWindow(QMainWindow):
         self.stretch_combo = QComboBox()
         self.stretch_combo.addItems(["arcsinh", "linear", "sqrt", "log"])
         self.stretch_combo.setCurrentText("arcsinh")
+        self.colormap_combo = QComboBox()
+        self.colormap_combo.addItems(["gray_r", "inferno", "icefire", "twilight", "jet", "turbo", "Hiroshige", "viridis", "RdBu"])
+        self.colormap_combo.setCurrentText("gray_r")
+        self.annotation_color_combo = QComboBox()
+        self.annotation_color_combo.addItems(
+            ["xkcd:bright red", "xkcd:dodger blue", "xkcd:black", "xkcd:white", "xkcd:turquoise", "xkcd:bright yellow"]
+        )
+        self.annotation_color_combo.setCurrentText("xkcd:bright red")
         self.contrast_slider = QSlider(Qt.Horizontal)
         self.contrast_slider.setTickPosition(slider_no_ticks())
         self.contrast_slider.setRange(950, 999)
@@ -298,14 +307,23 @@ class MainWindow(QMainWindow):
         self.vmax_spin.setRange(-1.0e12, 1.0e12)
         self.vmax_spin.setDecimals(4)
         self.vmax_spin.setEnabled(False)
+        vlim_row = QWidget()
+        vlim_layout = QHBoxLayout(vlim_row)
+        vlim_layout.setContentsMargins(0, 0, 0, 0)
+        vlim_layout.addWidget(QLabel("vmin"), 0)
+        vlim_layout.addWidget(self.vmin_spin, 1)
+        vlim_layout.addWidget(QLabel("vmax"), 0)
+        vlim_layout.addWidget(self.vmax_spin, 1)
         self.reset_contrast_button = QPushButton("Use image range")
         self.reset_contrast_button.clicked.connect(self.reset_contrast_from_image)
         self.auto_contrast_check.stateChanged.connect(self.toggle_contrast_controls)
+        contrast_form.setVerticalSpacing(6)
         contrast_form.addRow(self.auto_contrast_check)
+        contrast_form.addRow("Colormap", self.colormap_combo)
+        contrast_form.addRow("Label color", self.annotation_color_combo)
         contrast_form.addRow("Stretch", self.stretch_combo)
         contrast_form.addRow("Contrast", contrast_slider_row)
-        contrast_form.addRow("vmin", self.vmin_spin)
-        contrast_form.addRow("vmax", self.vmax_spin)
+        contrast_form.addRow(vlim_row)
         contrast_form.addRow(self.reset_contrast_button)
         layout.addWidget(contrast_box)
 
@@ -316,7 +334,7 @@ class MainWindow(QMainWindow):
     def _build_injected_source_box(self) -> QGroupBox:
         source_box = QGroupBox("Injected SN")
         source_form = QFormLayout(source_box)
-        self.inject_check = QCheckBox("Show empirical PSF")
+        self.inject_check = QCheckBox("Show injected SN")
         self.inject_check.setChecked(True)
         self.magnitude_spin = QDoubleSpinBox()
         self.magnitude_spin.setRange(8.0, 24.0)
@@ -324,7 +342,7 @@ class MainWindow(QMainWindow):
         self.magnitude_spin.setDecimals(1)
         self.magnitude_spin.setSuffix(" mag")
         self.psf_model_combo = QComboBox()
-        self.psf_model_combo.addItems(["empirical core", "empirical hybrid", "moffat"])
+        self.psf_model_combo.addItems(["moffat", "empirical core", "empirical hybrid"])
         self.inset_zoom_slider = QSlider(Qt.Horizontal)
         self.inset_zoom_slider.setTickPosition(slider_no_ticks())
         self.inset_zoom_slider.setRange(3, 12)
@@ -505,6 +523,8 @@ class MainWindow(QMainWindow):
         self.inset_zoom_slider.valueChanged.connect(self.update_inset_zoom_label)
         self.psf_model_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.stretch_combo.currentTextChanged.connect(self.update_chart_from_controls)
+        self.colormap_combo.currentTextChanged.connect(self.update_chart_from_controls)
+        self.annotation_color_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.observatory_combo.currentTextChanged.connect(self.update_pa_from_mode)
         self.datetime_edit.dateTimeChanged.connect(self.update_pa_from_mode)
         self.update_contrast_label()
@@ -656,6 +676,8 @@ class MainWindow(QMainWindow):
             vmin=self.vmin_spin.value(),
             vmax=self.vmax_spin.value(),
             contrast_stretch=self.stretch_combo.currentText(),
+            colormap=self.colormap_combo.currentText(),
+            annotation_color=self.annotation_color_combo.currentText(),
             inset_zoom_factor=float(self.inset_zoom_slider.value()),
         )
 

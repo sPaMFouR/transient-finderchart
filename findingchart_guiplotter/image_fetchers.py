@@ -16,6 +16,7 @@ from .models import ImageData, ImageRequest, Target
 
 
 CACHE_DIR = Path("data") / "cutouts"
+COLOR_FILTER_CHOICE = "color"
 
 
 class ImageFetchError(RuntimeError):
@@ -53,7 +54,7 @@ def available_bands(survey: str, mode: str) -> list[str]:
 def available_filter_choices(survey: str) -> list[str]:
     options: list[str] = []
     if available_bands(survey, "Color composite"):
-        options.append("Color composite")
+        options.append(COLOR_FILTER_CHOICE)
     options.extend(available_bands(survey, "Single band"))
     return options
 
@@ -72,7 +73,7 @@ def preferred_filter_choice(survey: str) -> str:
 
 
 def mode_and_band_from_filter_choice(survey: str, choice: str) -> tuple[str, str]:
-    if choice == "Color composite" and available_bands(survey, "Color composite"):
+    if choice in {COLOR_FILTER_CHOICE, "Color composite"} and available_bands(survey, "Color composite"):
         return "Color composite", available_bands(survey, "Color composite")[0]
     single_band_options = available_bands(survey, "Single band")
     if choice in single_band_options:
