@@ -60,10 +60,11 @@ SUPPORTED_ANNOTATION_COLORS = [
     "xkcd:bright yellow",
 ]
 DEFAULT_FIELD_SIZE_ARCSEC = 180.0
-MAIN_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD = 1.8
+COMPASS_LENGTH_ARCSEC_AT_DEFAULT_FIELD = 21.6
 MAIN_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD = 5.6
-INSET_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD = 1.57
 INSET_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD = 4.1
+REFERENCE_INJECTED_PSF_MAG = 18.0
+REFERENCE_INJECTED_PSF_PEAK_SNR = 20.0
 
 
 def apply_project_style() -> None:
@@ -135,47 +136,9 @@ def recommended_injected_magnitude(
     fwhm_arcsec: float | None = None,
     psf_model: str = "empirical core",
 ) -> float:
-    scale = pixel_scale_arcsec(image)
-    if not np.isfinite(scale) or scale <= 0:
-        raise EmpiricalPSFError("image pixel scale is not usable for injected-source brightness estimation")
-    if fwhm_arcsec is None:
-        fwhm_arcsec, _ = measured_image_fwhm_arcsec(image, target)
-    fwhm_pix = max(float(fwhm_arcsec) / scale, 1.0)
-    plane = measurement_plane(image.data)
-    finite = plane[np.isfinite(plane)]
-    if finite.size == 0:
-        raise EmpiricalPSFError("image contains no finite pixels for brightness estimation")
-    _, median, sigma = sigma_clipped_stats(finite, sigma=3.0, maxiters=5)
-    if not np.isfinite(sigma) or sigma <= 0:
-        raise EmpiricalPSFError("image background scatter is not usable for brightness estimation")
-    x0 = y0 = None
-    if target is not None:
-        tx, ty = world_to_scalar_pixel(image, SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg))
-        if np.isfinite(tx) and np.isfinite(ty):
-            x0, y0 = tx, ty
-    if image.data.ndim == 3:
-        kernel = moffat_kernel(fwhm_pix, size=injection_stamp_size(fwhm_pix, empirical_size=25))
-        base_flux = rgb_visual_flux(ChartSettings(psf_magnitude=18.0))
-    else:
-        if x0 is None or y0 is None:
-            raise EmpiricalPSFError("target coordinates are required for grayscale brightness estimation")
-        try:
-            kernel, _, psf_star_fluxes = empirical_psf_from_field(plane, x0, y0, fwhm_pix=fwhm_pix, psf_model=psf_model)
-            median_star_flux = float(np.nanmedian(psf_star_fluxes))
-            if not np.isfinite(median_star_flux) or median_star_flux <= 0:
-                raise EmpiricalPSFError("empirical PSF stars do not provide a usable brightness scale")
-            base_flux = 0.25 * median_star_flux
-        except (EmpiricalPSFError, ValueError, RuntimeError):
-            kernel = moffat_kernel(fwhm_pix, size=injection_stamp_size(fwhm_pix, empirical_size=25))
-            p50, p99 = np.nanpercentile(finite, [50, 99])
-            base_flux = max(p99 - p50, np.nanstd(finite), 1.0)
-    kernel_energy = float(np.sum(np.square(kernel)))
-    if not np.isfinite(kernel_energy) or kernel_energy <= 0:
-        raise EmpiricalPSFError("PSF kernel is not usable for brightness estimation")
-    desired_flux = float(target_snr) * float(sigma) / math.sqrt(kernel_energy)
-    desired_flux = max(desired_flux, 1.0e-12)
-    reference_flux = max(float(base_flux), 1.0e-12)
-    magnitude = 18.0 - 2.5 * math.log10(desired_flux / reference_flux)
+    if not np.isfinite(float(target_snr)) or float(target_snr) <= 0:
+        raise EmpiricalPSFError("target SNR must be positive for brightness estimation")
+    magnitude = REFERENCE_INJECTED_PSF_MAG - 2.5 * math.log10(float(target_snr) / REFERENCE_INJECTED_PSF_PEAK_SNR)
     return float(np.clip(magnitude, 8.0, 24.0))
 
 
@@ -228,17 +191,16 @@ def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSet
     fallback_size = injection_stamp_size(fwhm_pix, empirical_size=25)
     psf_model = normalize_psf_model(settings.psf_model)
     if data.ndim == 3:
-        total_flux = rgb_visual_flux(settings)
         kernel = moffat_kernel(fwhm_pix, size=fallback_size)
+        total_flux = injected_total_flux_from_peak_snr(data, settings, kernel)
         for channel in range(data.shape[2]):
             data[..., channel] = np.clip(inject_psf(data[..., channel], kernel, x0, y0, total_flux), 0, 1)
         return data
     try:
-        kernel, _, psf_star_fluxes = empirical_psf_from_field(data, x0, y0, fwhm_pix=fwhm_pix, psf_model=psf_model)
-        total_flux = estimate_target_flux_from_field(data, image, target, settings, fwhm_pix, psf_star_fluxes)
+        kernel, _, _ = empirical_psf_from_field(data, x0, y0, fwhm_pix=fwhm_pix, psf_model=psf_model)
     except (EmpiricalPSFError, ValueError, RuntimeError):
         kernel = moffat_kernel(fwhm_pix, size=fallback_size)
-        total_flux = estimate_target_flux_from_field(data, image, target, settings, fwhm_pix)
+    total_flux = injected_total_flux_from_peak_snr(data, settings, kernel)
     finite = data[np.isfinite(data)]
     fill = np.nanmedian(finite) if finite.size else 0.0
     return inject_psf(np.nan_to_num(data, nan=fill), kernel, x0, y0, total_flux)
@@ -254,6 +216,33 @@ def magnitude_flux_scale(magnitude: float, reference_mag: float = 18.0) -> float
 
 def injected_reference_mag(settings: ChartSettings) -> float:
     return float(settings.psf_magnitude)
+
+
+def background_noise_sigma(data: np.ndarray) -> float:
+    plane = measurement_plane(data)
+    finite = plane[np.isfinite(plane)]
+    if finite.size == 0:
+        raise EmpiricalPSFError("image contains no finite pixels for background estimation")
+    _, _, sigma = sigma_clipped_stats(finite, sigma=3.0, maxiters=5)
+    if not np.isfinite(sigma) or sigma <= 0:
+        raise EmpiricalPSFError("image background scatter is not usable for injected-source scaling")
+    return float(sigma)
+
+
+def total_flux_for_peak_snr(data: np.ndarray, kernel: np.ndarray, peak_snr: float) -> float:
+    sigma = background_noise_sigma(data)
+    peak = float(np.nanmax(np.asarray(kernel, dtype=float)))
+    if not np.isfinite(peak) or peak <= 0:
+        raise EmpiricalPSFError("PSF peak is not usable for injected-source scaling")
+    return max(float(peak_snr) * sigma / peak, 1.0e-12)
+
+
+def injected_total_flux_from_peak_snr(data: np.ndarray, settings: ChartSettings, kernel: np.ndarray) -> float:
+    reference_flux = total_flux_for_peak_snr(data, kernel, REFERENCE_INJECTED_PSF_PEAK_SNR)
+    return max(
+        reference_flux * magnitude_flux_scale(settings.psf_magnitude, reference_mag=REFERENCE_INJECTED_PSF_MAG),
+        1.0e-12,
+    )
 
 
 def estimate_target_flux_from_field(
@@ -356,7 +345,7 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
     data = image_with_injected_psf(image, target, settings)
     ny, nx = data.shape[:2]
     extent = image_display_extent(nx, ny)
-    cmap = resolve_plot_colormap(settings.colormap)
+    cmap = resolve_plot_colormap(settings.colormap, settings.invert_colormap)
     if data.ndim == 3:
         if not settings.auto_contrast and settings.vmax is not None and settings.vmin is not None and settings.vmax > settings.vmin:
             data = np.clip((data - settings.vmin) / (settings.vmax - settings.vmin), 0, 1)
@@ -389,7 +378,7 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
             closed=True,
             fill=False,
             edgecolor=SLIT_COLOR,
-            linewidth=0.7,
+            linewidth=0.49,
             alpha=1.0,
         )
         ax.add_patch(polygon)
@@ -427,14 +416,15 @@ def apply_rgb_stretch(data: np.ndarray, settings: ChartSettings) -> np.ndarray:
     return np.asarray(stretch(clipped), dtype=float)
 
 
-def resolve_plot_colormap(name: str):
+def resolve_plot_colormap(name: str, invert: bool = False):
     cmap_name = (name or "gray_r").strip()
     if cmap_name not in SUPPORTED_COLORMAPS:
         cmap_name = "gray_r"
     try:
-        return plt.get_cmap(cmap_name)
+        cmap = plt.get_cmap(cmap_name)
     except ValueError:
-        return load_cmap(cmap_name)
+        cmap = load_cmap(cmap_name)
+    return cmap.reversed() if invert else cmap
 
 
 def resolve_annotation_color(name: str) -> str:
@@ -448,30 +438,42 @@ def crosshair_radii_pixels(
     image: ImageData,
     *,
     scale_arcsec_per_pix: float,
-    inner_arcsec_at_default_field: float,
+    psf_fwhm_arcsec: float,
     outer_arcsec_at_default_field: float,
+    zoom_scale: float = 1.0,
 ) -> tuple[float, float]:
     field_scale = field_size_scale(image)
-    inner = max(1.0, (inner_arcsec_at_default_field * field_scale) / max(scale_arcsec_per_pix, 1.0e-12))
-    outer = max(inner + 1.0, (outer_arcsec_at_default_field * field_scale) / max(scale_arcsec_per_pix, 1.0e-12))
+    fwhm_pix = max(float(psf_fwhm_arcsec) / max(scale_arcsec_per_pix, 1.0e-12), 1.0)
+    inner = max(1.0, 0.7 * fwhm_pix) * zoom_scale
+    outer = max(
+        inner + 1.0,
+        1.5 * fwhm_pix * zoom_scale,
+        ((outer_arcsec_at_default_field * field_scale) / max(scale_arcsec_per_pix, 1.0e-12)) * zoom_scale,
+    )
     return inner, outer
 
 
-def main_crosshair_radii_pixels(image: ImageData) -> tuple[float, float]:
+def main_crosshair_radii_pixels(image: ImageData, psf_fwhm_arcsec: float) -> tuple[float, float]:
     return crosshair_radii_pixels(
         image,
         scale_arcsec_per_pix=pixel_scale_arcsec(image),
-        inner_arcsec_at_default_field=MAIN_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD,
+        psf_fwhm_arcsec=psf_fwhm_arcsec,
         outer_arcsec_at_default_field=MAIN_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD,
     )
 
 
-def inset_crosshair_radii_pixels(image: ImageData, scale_arcsec_per_pix: float) -> tuple[float, float]:
+def inset_crosshair_radii_pixels(
+    image: ImageData,
+    scale_arcsec_per_pix: float,
+    psf_fwhm_arcsec: float,
+    zoom_factor: float = DEFAULT_INSET_ZOOM_FACTOR,
+) -> tuple[float, float]:
     return crosshair_radii_pixels(
         image,
         scale_arcsec_per_pix=scale_arcsec_per_pix,
-        inner_arcsec_at_default_field=INSET_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD,
+        psf_fwhm_arcsec=psf_fwhm_arcsec,
         outer_arcsec_at_default_field=INSET_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD,
+        zoom_scale=max(float(zoom_factor), 1.0) / DEFAULT_INSET_ZOOM_FACTOR,
     )
 
 
@@ -494,6 +496,10 @@ def main_scalebar_length_for_field_arcsec(field_arcsec: float) -> float:
 
 def main_scalebar_length_arcsec(image: ImageData) -> float:
     return main_scalebar_length_for_field_arcsec(image_fov_arcsec(image))
+
+
+def compass_length_arcsec(image: ImageData) -> float:
+    return COMPASS_LENGTH_ARCSEC_AT_DEFAULT_FIELD * field_size_scale(image)
 
 
 def chart_title(image: ImageData, target: Target) -> str:
@@ -594,7 +600,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
             fill=False,
             edgecolor=annotation_color,
             linewidth=0.5,
-            alpha=0.65,
+            alpha=0.455,
         )
     )
     
@@ -606,15 +612,22 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     if data.ndim == 3:
         inset.imshow(np.clip(stamp, 0, 1), origin="lower", extent=stamp_extent)
     else:
-        inset.imshow(stamp, origin="lower", cmap=resolve_plot_colormap(settings.colormap), norm=norm, extent=stamp_extent)
+        inset.imshow(
+            stamp,
+            origin="lower",
+            cmap=resolve_plot_colormap(settings.colormap, settings.invert_colormap),
+            norm=norm,
+            extent=stamp_extent,
+        )
     inset.set_xlim(stamp_extent[0], stamp_extent[1])
     inset.set_ylim(stamp_extent[2], stamp_extent[3])
     inset.set_aspect("equal", adjustable="box")
     inset.set_xticks([])
     inset.set_yticks([])
     for spine in inset.spines.values():
-        spine.set_edgecolor("black")
+        spine.set_edgecolor(annotation_color)
         spine.set_linewidth(0.6)
+        spine.set_alpha(0.7)
     inset._finding_chart_pixel_offset = (float(x1), float(y1))
     connect_inset_to_source_box(ax, inset, box_left, box_right, box_bottom, box_top, annotation_color)
     if settings.show_slit:
@@ -657,7 +670,7 @@ def connect_inset_to_source_box(
             linewidth=0.5,
             alpha=0.75,
             clip_on=False,
-            zorder=5,
+            zorder=-5,
         )
 
         # Do not let layout calculations alter or suppress the connector.
@@ -706,7 +719,7 @@ def draw_inset_slit(inset, image: ImageData, target: Target, settings: ChartSett
             closed=True,
             fill=False,
             edgecolor=SLIT_COLOR,
-            linewidth=0.6,
+            linewidth=0.42,
             alpha=1.0,
             clip_on=True,
         )
@@ -722,7 +735,7 @@ def draw_inset_marker(
     x: float,
     y: float,
 ) -> None:
-    inner, outer = inset_crosshair_radii_pixels(image, scale)
+    inner, outer = inset_crosshair_radii_pixels(image, scale, settings.psf_fwhm_arcsec, settings.inset_zoom_factor)
     draw_crosshair_segments(
         inset,
         x,
@@ -739,8 +752,10 @@ def draw_inset_scalebar(inset, settings: ChartSettings, scale: float, shape: tup
     ny, nx = shape
     length_arcsec = inset_scalebar_length_arcsec(scale, shape)
     length_pix = length_arcsec / scale
-    x0 = 0.5 * (nx - length_pix)
-    y0 = 0.88 * ny
+    margin_x = max(4.0, 0.06 * nx)
+    margin_y = max(4.0, 0.10 * ny)
+    x0 = nx - length_pix - margin_x
+    y0 = margin_y
     tick = 1
     annotation_color = resolve_annotation_color(settings.annotation_color)
     inset.plot([x0, x0 + length_pix], [y0, y0], color=annotation_color, lw=1.2)
@@ -748,12 +763,12 @@ def draw_inset_scalebar(inset, settings: ChartSettings, scale: float, shape: tup
     inset.plot([x0 + length_pix, x0 + length_pix], [y0 - tick, y0 + tick], color=annotation_color, lw=0.8)
     
     inset.text(
-        x0 + 0.54 * length_pix,
-        y0 - 4,
+        x0 + 0.5 * length_pix,
+        y0 + 3,
         arcsec_label(length_arcsec),
-        color="xkcd:red",
+        color=annotation_color,
         ha="center",
-        va="top",
+        va="bottom",
         fontsize=10,
         # bbox={"facecolor": "black", "alpha": 0.4, "edgecolor": "none", "pad": 1.0},
     )
@@ -781,7 +796,8 @@ def arcsec_label(length_arcsec: float) -> str:
 
 
 def draw_inset_sn_label(inset, settings: ChartSettings, label: str, x: float, y: float) -> None:
-    annotation_color = resolve_annotation_color(settings.annotation_color)
+    sn_label_color = "xkcd:red"
+    top_zorder = 10000
     annotation = inset.annotate(
         label,
         xy=(x, y),
@@ -790,32 +806,39 @@ def draw_inset_sn_label(inset, settings: ChartSettings, label: str, x: float, y:
         textcoords="axes fraction",
         ha="center",
         va="top",
-        color=annotation_color,
+        color=sn_label_color,
         fontsize=9,
         fontfamily=SCIENCE_FONT_FAMILY,
         weight="bold",
         arrowprops={
             "arrowstyle": "->",
             "linewidth": 1.0,
-            "color": annotation_color,
+            "color": sn_label_color,
             "shrinkA": 0,
             "shrinkB": 4,
         },
-        bbox={"facecolor": "xkcd:white", "alpha": 0.75, "edgecolor": "xkcd:dark", "linewidth": 0.3, "pad": 0.3, "boxstyle": 'round',},
+        bbox={
+            "facecolor": "xkcd:white",
+            "alpha": 0.75,
+            "edgecolor": sn_label_color,
+            "linewidth": 0.5,
+            "pad": 0.3,
+            "boxstyle": "round",
+        },
         annotation_clip=False,
-        zorder=200,
+        zorder=top_zorder,
         clip_on=False,
     )
-    annotation.set_zorder(200)
+    annotation.set_zorder(top_zorder)
     if annotation.arrow_patch is not None:
-        annotation.arrow_patch.set_zorder(201)
+        annotation.arrow_patch.set_zorder(top_zorder + 1)
     bbox_patch = annotation.get_bbox_patch()
     if bbox_patch is not None:
-        bbox_patch.set_zorder(202)
+        bbox_patch.set_zorder(top_zorder + 2)
     
     
 def draw_sn_marker(ax, image: ImageData, target: Target, settings: ChartSettings, x: float, y: float) -> None:
-    inner, outer = main_crosshair_radii_pixels(image)
+    inner, outer = main_crosshair_radii_pixels(image, settings.psf_fwhm_arcsec)
     draw_crosshair_segments(
         ax,
         x,
@@ -868,7 +891,7 @@ def draw_compass(ax, image: ImageData, settings: ChartSettings) -> None:
     base_x = 0.94 * nx
     base_y = 0.04 * ny
     center = image.wcs.pixel_to_world(base_x, base_y)
-    length_arcsec = max(16.0, min(nx, ny) * pixel_scale_arcsec(image) * 0.12)
+    length_arcsec = compass_length_arcsec(image)
     north = center.spherical_offsets_by(0 * u.arcsec, length_arcsec * u.arcsec)
     east = center.spherical_offsets_by(length_arcsec * u.arcsec, 0 * u.arcsec)
     north_x, north_y = world_to_scalar_pixel(image, north)
@@ -1018,7 +1041,7 @@ def catalog_short_label(source) -> str:
     return getattr(source, "label", "catalog source")
 
 
-def export_chart(path: Path, image: ImageData, target: Target, settings: ChartSettings, dpi: int = 180) -> None:
+def export_chart(path: Path, image: ImageData, target: Target, settings: ChartSettings, dpi: int = 400) -> None:
     apply_project_style()
     fig = Figure(figsize=(7, 7))
     ax = fig.add_subplot(111, projection=image.wcs)

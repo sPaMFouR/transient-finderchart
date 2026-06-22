@@ -10,6 +10,9 @@ from findingchart_guiplotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
     apply_rgb_stretch,
     arcsec_label,
+    background_noise_sigma,
+    compass_length_arcsec,
+    injected_total_flux_from_peak_snr,
     resolve_annotation_color,
     resolve_plot_colormap,
     estimate_catalog_flux_scale,
@@ -178,15 +181,88 @@ def test_crosshair_sizes_scale_linearly_with_field_size():
     assert field_size_scale(image_3arcmin) == pytest.approx(1.0)
     assert field_size_scale(image_1p5arcmin) == pytest.approx(0.5)
 
-    main_default = main_crosshair_radii_pixels(image_3arcmin)
-    main_small = main_crosshair_radii_pixels(image_1p5arcmin)
-    inset_default = inset_crosshair_radii_pixels(image_3arcmin, scale_arcsec_per_pix=0.5)
-    inset_small = inset_crosshair_radii_pixels(image_1p5arcmin, scale_arcsec_per_pix=0.5)
+    main_default = main_crosshair_radii_pixels(image_3arcmin, psf_fwhm_arcsec=1.0)
+    main_small = main_crosshair_radii_pixels(image_1p5arcmin, psf_fwhm_arcsec=1.0)
+    inset_default = inset_crosshair_radii_pixels(image_3arcmin, scale_arcsec_per_pix=0.5, psf_fwhm_arcsec=1.0)
+    inset_small = inset_crosshair_radii_pixels(image_1p5arcmin, scale_arcsec_per_pix=0.5, psf_fwhm_arcsec=1.0)
 
-    assert main_small[0] == pytest.approx(0.5 * main_default[0])
+    assert main_default[0] == pytest.approx(1.4)
+    assert main_small[0] == pytest.approx(main_default[0])
     assert main_small[1] == pytest.approx(0.5 * main_default[1])
-    assert inset_small[0] == pytest.approx(0.5 * inset_default[0])
+    assert inset_default[0] == pytest.approx(1.4)
+    assert inset_small[0] == pytest.approx(inset_default[0])
     assert inset_small[1] == pytest.approx(0.5 * inset_default[1])
+
+
+def test_inset_crosshair_scales_linearly_with_zoom_factor():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((360, 360)),
+        wcs=centered_tan_wcs(target, nx=360, ny=360, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    default_radii = inset_crosshair_radii_pixels(image, scale_arcsec_per_pix=0.5, psf_fwhm_arcsec=1.0, zoom_factor=6.0)
+    zoomed_radii = inset_crosshair_radii_pixels(image, scale_arcsec_per_pix=0.5, psf_fwhm_arcsec=1.0, zoom_factor=12.0)
+
+    assert zoomed_radii[0] == pytest.approx(2.0 * default_radii[0])
+    assert zoomed_radii[1] == pytest.approx(2.0 * default_radii[1])
+
+
+def test_crosshair_inner_radius_tracks_injected_psf_fwhm():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((360, 360)),
+        wcs=centered_tan_wcs(target, nx=360, ny=360, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    main_inner, _ = main_crosshair_radii_pixels(image, psf_fwhm_arcsec=2.0)
+    inset_inner, _ = inset_crosshair_radii_pixels(image, scale_arcsec_per_pix=0.5, psf_fwhm_arcsec=2.0, zoom_factor=6.0)
+
+    assert main_inner == pytest.approx(2.8)
+    assert inset_inner == pytest.approx(2.8)
+
+
+def test_crosshair_outer_radius_has_minimum_width_of_one_point_five_fwhm():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((40, 40)),
+        wcs=centered_tan_wcs(target, nx=40, ny=40, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    inner, outer = main_crosshair_radii_pixels(image, psf_fwhm_arcsec=2.0)
+
+    assert inner == pytest.approx(2.8)
+    assert outer == pytest.approx(6.0)
+
+
+def test_compass_length_scales_linearly_with_field_size():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image_3arcmin = ImageData(
+        data=np.zeros((360, 360)),
+        wcs=centered_tan_wcs(target, nx=360, ny=360, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    image_1p5arcmin = ImageData(
+        data=np.zeros((180, 180)),
+        wcs=centered_tan_wcs(target, nx=180, ny=180, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    assert compass_length_arcsec(image_3arcmin) == pytest.approx(21.6)
+    assert compass_length_arcsec(image_1p5arcmin) == pytest.approx(10.8)
 
 
 def test_contrast_stretch_defaults_to_arcsinh_and_selects_modes():
@@ -199,6 +275,7 @@ def test_contrast_stretch_defaults_to_arcsinh_and_selects_modes():
 def test_plot_colormap_defaults_and_supports_builtin_and_palette_maps():
     assert resolve_plot_colormap("unknown").name == "gray_r"
     assert resolve_plot_colormap("inferno").name == "inferno"
+    assert resolve_plot_colormap("inferno", invert=True).name == "inferno_r"
     assert resolve_plot_colormap("icefire").name == "icefire"
     assert resolve_plot_colormap("Hiroshige").name == "Hiroshige"
 
@@ -297,8 +374,42 @@ def test_recommended_injected_magnitude_gets_brighter_for_higher_target_snr():
         image.data = inject_psf(image.data, kernel, x=x, y=y, flux=flux)
 
     mag_10sigma = recommended_injected_magnitude(image, target, target_snr=10.0, fwhm_arcsec=2.0)
+    mag_20sigma = recommended_injected_magnitude(image, target, target_snr=20.0, fwhm_arcsec=2.0)
     mag_40sigma = recommended_injected_magnitude(image, target, target_snr=40.0, fwhm_arcsec=2.0)
 
     assert 8.0 <= mag_10sigma <= 24.0
+    assert mag_20sigma == pytest.approx(18.0)
     assert 8.0 <= mag_40sigma <= 24.0
     assert mag_40sigma < mag_10sigma
+
+
+def test_injected_flux_tracks_peak_snr_consistently_across_fov_changes():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    rng = np.random.default_rng(321)
+    full_noise = rng.normal(0.0, 0.5, size=(181, 181))
+    wide_image = ImageData(
+        data=full_noise.copy(),
+        wcs=centered_tan_wcs(target, nx=181, ny=181, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    narrow_image = ImageData(
+        data=full_noise[30:151, 30:151].copy(),
+        wcs=centered_tan_wcs(target, nx=121, ny=121, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    kernel = moffat_kernel(4.0, size=81)
+    settings = ChartSettings(psf_magnitude=18.0)
+
+    wide_flux = injected_total_flux_from_peak_snr(wide_image.data, settings, kernel)
+    narrow_flux = injected_total_flux_from_peak_snr(narrow_image.data, settings, kernel)
+    kernel_peak = float(kernel.max())
+
+    wide_peak_snr = wide_flux * kernel_peak / background_noise_sigma(wide_image.data)
+    narrow_peak_snr = narrow_flux * kernel_peak / background_noise_sigma(narrow_image.data)
+
+    assert wide_peak_snr == pytest.approx(20.0)
+    assert narrow_peak_snr == pytest.approx(20.0)

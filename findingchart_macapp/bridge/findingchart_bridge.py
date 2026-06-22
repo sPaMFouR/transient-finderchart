@@ -266,6 +266,7 @@ def _load_image(payload: dict[str, Any], repo_dir: Path) -> dict[str, Any]:
         contrast_percentile=float(payload.get("contrastPercentile") or 99.3),
         contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
         colormap=str(payload.get("colormap") or "gray_r"),
+        invert_colormap=bool(payload.get("invertColormap", False)),
         annotation_color=str(payload.get("annotationColor") or "xkcd:bright red"),
     )
     default_vmin, default_vmax = contrast_limits(image.data, guide_settings)
@@ -377,6 +378,7 @@ def _settings(payload: dict[str, Any], target, catalog_sources: list[Any]):
         vmax=float(payload["vmax"]) if payload.get("vmax") not in (None, "") else None,
         contrast_stretch=str(payload.get("contrastStretch") or "arcsinh"),
         colormap=str(payload.get("colormap") or "gray_r"),
+        invert_colormap=bool(payload.get("invertColormap", False)),
         annotation_color=str(payload.get("annotationColor") or "xkcd:bright red"),
         contrast_percentile=float(payload.get("contrastPercentile") or 99.3),
         inset_zoom_factor=float(payload.get("insetZoomFactor") or 6.0),
@@ -483,7 +485,7 @@ def main() -> int:
                 result = _render(payload, repo_dir, output_dir, export_format="pdf", dpi=2000)
                 result["message"] = f"Saved PDF at {result['imagePath']}"
             elif action == "exportJPG":
-                result = _render(payload, repo_dir, output_dir, export_format="jpg", dpi=300)
+                result = _render(payload, repo_dir, output_dir, export_format="jpg", dpi=400)
                 result["message"] = f"Saved JPG at {result['imagePath']}"
             else:
                 result = _render(payload, repo_dir, output_dir)

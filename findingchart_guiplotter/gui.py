@@ -187,6 +187,8 @@ class MainWindow(QMainWindow):
         self.image: ImageData | None = None
         self.catalog_sources: list[CatalogSource] = []
         self.selected_catalog_source: CatalogSource | None = None
+        self._last_auto_psf_fwhm_arcsec: float | None = None
+        self._last_auto_psf_magnitude: float | None = None
         self._thread: QThread | None = None
         self._worker: Worker | None = None
 
@@ -284,6 +286,7 @@ class MainWindow(QMainWindow):
         self.colormap_combo = QComboBox()
         self.colormap_combo.addItems(["gray_r", "inferno", "icefire", "twilight", "jet", "turbo", "Hiroshige", "viridis", "RdBu"])
         self.colormap_combo.setCurrentText("gray_r")
+        self.invert_colormap_check = QCheckBox("Invert")
         self.annotation_color_combo = QComboBox()
         self.annotation_color_combo.addItems(
             ["xkcd:bright red", "xkcd:dodger blue", "xkcd:black", "xkcd:white", "xkcd:turquoise", "xkcd:bright yellow"]
@@ -299,6 +302,11 @@ class MainWindow(QMainWindow):
         contrast_slider_layout.setContentsMargins(0, 0, 0, 0)
         contrast_slider_layout.addWidget(self.contrast_slider, 1)
         contrast_slider_layout.addWidget(self.contrast_value_label, 0)
+        colormap_row = QWidget()
+        colormap_layout = QHBoxLayout(colormap_row)
+        colormap_layout.setContentsMargins(0, 0, 0, 0)
+        colormap_layout.addWidget(self.colormap_combo, 1)
+        colormap_layout.addWidget(self.invert_colormap_check, 0)
         self.vmin_spin = QDoubleSpinBox()
         self.vmin_spin.setRange(-1.0e12, 1.0e12)
         self.vmin_spin.setDecimals(4)
@@ -319,7 +327,7 @@ class MainWindow(QMainWindow):
         self.auto_contrast_check.stateChanged.connect(self.toggle_contrast_controls)
         contrast_form.setVerticalSpacing(6)
         contrast_form.addRow(self.auto_contrast_check)
-        contrast_form.addRow("Colormap", self.colormap_combo)
+        contrast_form.addRow("Colormap", colormap_row)
         contrast_form.addRow("Label color", self.annotation_color_combo)
         contrast_form.addRow("Stretch", self.stretch_combo)
         contrast_form.addRow("Contrast", contrast_slider_row)
@@ -342,7 +350,7 @@ class MainWindow(QMainWindow):
         self.magnitude_spin.setDecimals(1)
         self.magnitude_spin.setSuffix(" mag")
         self.psf_model_combo = QComboBox()
-        self.psf_model_combo.addItems(["moffat", "empirical core", "empirical hybrid"])
+        self.psf_model_combo.addItems(["moffat", "empirical core", "empirical hybrid", "gaussian taper"])
         self.inset_zoom_slider = QSlider(Qt.Horizontal)
         self.inset_zoom_slider.setTickPosition(slider_no_ticks())
         self.inset_zoom_slider.setRange(3, 12)
@@ -524,6 +532,7 @@ class MainWindow(QMainWindow):
         self.psf_model_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.stretch_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.colormap_combo.currentTextChanged.connect(self.update_chart_from_controls)
+        self.invert_colormap_check.stateChanged.connect(self.update_chart_from_controls)
         self.annotation_color_combo.currentTextChanged.connect(self.update_chart_from_controls)
         self.observatory_combo.currentTextChanged.connect(self.update_pa_from_mode)
         self.datetime_edit.dateTimeChanged.connect(self.update_pa_from_mode)
@@ -620,14 +629,20 @@ class MainWindow(QMainWindow):
         self.load_button.setEnabled(True)
         image, measured_fwhm_arcsec, measured_star_count, recommended_magnitude = result
         self.image = image
-        if measured_fwhm_arcsec is not None:
+        if measured_fwhm_arcsec is not None and self._uses_last_auto_value(
+            self.fwhm_spin.value(), self._last_auto_psf_fwhm_arcsec, default_value=1.0, tolerance=1.0e-4
+        ):
             self.fwhm_spin.blockSignals(True)
             self.fwhm_spin.setValue(float(measured_fwhm_arcsec))
             self.fwhm_spin.blockSignals(False)
-        if recommended_magnitude is not None:
+            self._last_auto_psf_fwhm_arcsec = float(measured_fwhm_arcsec)
+        if recommended_magnitude is not None and self._uses_last_auto_value(
+            self.magnitude_spin.value(), self._last_auto_psf_magnitude, default_value=18.0, tolerance=1.0e-3
+        ):
             self.magnitude_spin.blockSignals(True)
             self.magnitude_spin.setValue(float(recommended_magnitude))
             self.magnitude_spin.blockSignals(False)
+            self._last_auto_psf_magnitude = float(recommended_magnitude)
         self.reset_contrast_from_image()
         if measured_fwhm_arcsec is not None and measured_star_count is not None and recommended_magnitude is not None:
             self.status_label.setText(
@@ -644,6 +659,11 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setText(f"Loaded {image.survey} {image.band}")
         self.update_chart_from_controls()
+
+    @staticmethod
+    def _uses_last_auto_value(current_value: float, last_auto_value: float | None, *, default_value: float, tolerance: float) -> bool:
+        reference = default_value if last_auto_value is None else last_auto_value
+        return abs(float(current_value) - float(reference)) <= tolerance
 
     def _worker_failed(self, message: str) -> None:
         self.search_button.setEnabled(True)
@@ -677,6 +697,7 @@ class MainWindow(QMainWindow):
             vmax=self.vmax_spin.value(),
             contrast_stretch=self.stretch_combo.currentText(),
             colormap=self.colormap_combo.currentText(),
+            invert_colormap=self.invert_colormap_check.isChecked(),
             annotation_color=self.annotation_color_combo.currentText(),
             inset_zoom_factor=float(self.inset_zoom_slider.value()),
         )

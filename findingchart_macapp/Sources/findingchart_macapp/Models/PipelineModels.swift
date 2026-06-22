@@ -43,6 +43,7 @@ struct PipelineParams: Codable, Equatable {
     var vmax: Double? = nil
     var contrastStretch: String = "arcsinh"
     var colormap: String = "gray_r"
+    var invertColormap: Bool = false
     var annotationColor: String = "xkcd:bright red"
     var contrastPercentile: Double = 99.3
 }

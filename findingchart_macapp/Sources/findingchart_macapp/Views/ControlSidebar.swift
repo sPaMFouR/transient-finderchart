@@ -73,6 +73,7 @@ struct ControlSidebar: View {
                 Text("moffat").tag("moffat")
                 Text("empirical core").tag("empirical core")
                 Text("empirical hybrid").tag("empirical hybrid")
+                Text("gaussian taper").tag("gaussian taper")
             }
         }
         .glassCard()
@@ -88,16 +89,20 @@ struct ControlSidebar: View {
             SectionHeader(systemName: "camera.filters", title: "Contrast")
             Toggle("Auto contrast", isOn: $vm.params.autoContrast)
                 .toggleStyle(.checkbox)
-            Picker("Colormap", selection: $vm.params.colormap) {
-                Text("gray_r").tag("gray_r")
-                Text("inferno").tag("inferno")
-                Text("icefire").tag("icefire")
-                Text("twilight").tag("twilight")
-                Text("jet").tag("jet")
-                Text("turbo").tag("turbo")
-                Text("Hiroshige").tag("Hiroshige")
-                Text("viridis").tag("viridis")
-                Text("RdBu").tag("RdBu")
+            HStack(spacing: 8) {
+                Picker("Colormap", selection: $vm.params.colormap) {
+                    Text("gray_r").tag("gray_r")
+                    Text("inferno").tag("inferno")
+                    Text("icefire").tag("icefire")
+                    Text("twilight").tag("twilight")
+                    Text("jet").tag("jet")
+                    Text("turbo").tag("turbo")
+                    Text("Hiroshige").tag("Hiroshige")
+                    Text("viridis").tag("viridis")
+                    Text("RdBu").tag("RdBu")
+                }
+                Toggle("Invert", isOn: $vm.params.invertColormap)
+                    .toggleStyle(.checkbox)
             }
             Picker("Label color", selection: $vm.params.annotationColor) {
                 Text("xkcd:bright red").tag("xkcd:bright red")
@@ -133,6 +138,7 @@ struct ControlSidebar: View {
         .onChange(of: vm.params.autoContrast) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.contrastStretch) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.colormap) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.invertColormap) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.annotationColor) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.contrastPercentile) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.vmin) { _, _ in vm.scheduleLiveRender() }
@@ -278,7 +284,7 @@ struct ControlSidebar: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(systemName: "square.and.arrow.down", title: "Save")
             ActionButton(title: "Save PDF (2000 dpi)", systemName: "doc.richtext", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.exportPDF)
-            ActionButton(title: "Save JPG (300 dpi)", systemName: "photo", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.exportJPG)
+            ActionButton(title: "Save JPG (400 dpi)", systemName: "photo", disabled: vm.isRunning || !vm.hasLoadedImage, action: vm.exportJPG)
         }
         .glassCard()
     }

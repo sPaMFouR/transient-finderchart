@@ -76,5 +76,6 @@ class ChartSettings:
     vmax: float | None = None
     contrast_stretch: str = "arcsinh"
     colormap: str = "gray_r"
+    invert_colormap: bool = False
     annotation_color: str = "xkcd:bright red"
     inset_zoom_factor: float = 6.0

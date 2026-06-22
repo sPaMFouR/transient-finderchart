@@ -105,16 +105,19 @@ def test_psf_model_selection_defaults_to_moffat():
     assert selected.shape[0] > psf.shape[0]
 
 
-def test_psf_model_selection_can_choose_moffat_or_hybrid():
+def test_psf_model_selection_can_choose_moffat_hybrid_or_gaussian_taper():
     psf = np.zeros((31, 31))
     psf[15, 15] = 1.0
     psf /= psf.sum()
 
     moffat = select_injected_psf_model(psf, fwhm_pix=2.0, psf_model="moffat")
     hybrid = select_injected_psf_model(psf, fwhm_pix=2.0, psf_model="empirical hybrid")
+    gaussian_taper = select_injected_psf_model(psf, fwhm_pix=2.0, psf_model="gaussian taper")
 
     assert moffat.shape[0] > psf.shape[0]
     assert hybrid.shape[0] > psf.shape[0]
+    assert gaussian_taper.shape[0] > psf.shape[0]
+    assert gaussian_taper.sum() == pytest.approx(1.0)
 
 
 def test_measure_psf_fwhm_recovers_moffat_kernel_width():

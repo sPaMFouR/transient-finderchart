@@ -459,10 +459,59 @@ def hybridize_injected_psf(psf: np.ndarray, fwhm_pix: float, beta: float = 4.5) 
     return hybrid / total
 
 
+def gaussian_kernel(fwhm_pix: float, size: int | None = None) -> np.ndarray:
+    sigma = max(float(fwhm_pix), 1.0e-6) / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+    if size is None:
+        radius = int(max(6, math.ceil(3.5 * fwhm_pix)))
+        size = 2 * radius + 1
+    yy, xx = np.mgrid[:size, :size]
+    cy = 0.5 * (size - 1)
+    cx = 0.5 * (size - 1)
+    radius2 = (xx - cx) ** 2 + (yy - cy) ** 2
+    kernel = np.exp(-0.5 * radius2 / max(sigma * sigma, 1.0e-12))
+    return kernel / np.sum(kernel)
+
+
+def gaussian_taper_injected_psf(psf: np.ndarray, fwhm_pix: float) -> np.ndarray:
+    empirical = circularize_psf(psf)
+    target_size = injection_stamp_size(fwhm_pix, empirical.shape[0])
+    padded_empirical = pad_psf(empirical, target_size)
+    analytic = gaussian_kernel(fwhm_pix, size=target_size)
+
+    empirical_r, empirical_profile = radial_profile(empirical)
+    analytic_r, analytic_profile = radial_profile(analytic)
+    match_radius = min(max(2.5 * fwhm_pix, 3.0), 0.35 * (empirical.shape[0] - 1))
+    empirical_value = float(np.interp(match_radius, empirical_r, empirical_profile, left=empirical_profile[0], right=0.0))
+    analytic_value = float(np.interp(match_radius, analytic_r, analytic_profile, left=analytic_profile[0], right=0.0))
+    if analytic_value > 0 and empirical_value > 0:
+        analytic = analytic * (empirical_value / analytic_value)
+
+    ny, nx = analytic.shape
+    y, x = np.mgrid[:ny, :nx]
+    cy = 0.5 * (ny - 1)
+    cx = 0.5 * (nx - 1)
+    radius = np.hypot(x - cx, y - cy)
+    transition_start = max(2.5 * fwhm_pix, 0.28 * empirical.shape[0])
+    transition_sigma = max(1.5 * fwhm_pix, 0.12 * empirical.shape[0], 1.0)
+    edge = np.clip(radius - transition_start, 0.0, None)
+    blend_weight = 1.0 - np.exp(-0.5 * np.square(edge / transition_sigma))
+
+    tapered = (1.0 - blend_weight) * padded_empirical + blend_weight * analytic
+    tapered[~np.isfinite(tapered)] = 0.0
+    tapered[tapered < 0] = 0.0
+    tapered = smooth_psf_wings(tapered, taper_start_fraction=0.72)
+    total = float(np.sum(tapered))
+    if total <= 0:
+        raise EmpiricalPSFError("gaussian-taper injected PSF has non-positive total flux")
+    return tapered / total
+
+
 def normalize_psf_model(psf_model: str) -> str:
     mode = (psf_model or "moffat").strip().lower()
     if mode in {"hybrid", "empirical hybrid"}:
         return "empirical hybrid"
+    if mode in {"gaussian", "gaussian taper", "empirical gaussian taper"}:
+        return "gaussian taper"
     if mode in {"moffat", "analytic moffat"}:
         return "moffat"
     if mode in {"core", "empirical", "empirical core"}:
@@ -474,6 +523,8 @@ def select_injected_psf_model(psf: np.ndarray, fwhm_pix: float, psf_model: str) 
     mode = normalize_psf_model(psf_model)
     if mode == "empirical hybrid":
         return hybridize_injected_psf(psf, fwhm_pix)
+    if mode == "gaussian taper":
+        return gaussian_taper_injected_psf(psf, fwhm_pix)
     if mode == "moffat":
         return moffat_kernel(fwhm_pix, size=injection_stamp_size(fwhm_pix, psf.shape[0]))
     return np.array(psf, dtype=float, copy=True)

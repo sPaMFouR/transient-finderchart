@@ -34,4 +34,4 @@ and the same Python dependencies as the existing Qt/web apps.
 2. Load Image downloads the selected Archive Image cutout and caches it locally.
 3. Slit and SN/overlay sliders re-render from the cached image after a short debounce.
 4. Load Catalog can query Gaia DR3, Pan-STARRS DR2, or both; selecting a row highlights it and shows offset/details.
-5. Save PDF writes a 2000 dpi PDF; Save JPG writes a 300 dpi JPG.
+5. Save PDF writes a 2000 dpi PDF; Save JPG writes a 400 dpi JPG.

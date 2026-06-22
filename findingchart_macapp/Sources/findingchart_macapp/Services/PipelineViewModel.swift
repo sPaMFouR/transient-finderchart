@@ -76,14 +76,18 @@ final class PipelineViewModel: ObservableObject {
         catalogSources = []
         selectedCatalogDetail = ""
         runBridge(action: "loadImage", statusText: "Loading archive image...") { output in
+            let previousMeasuredFwhm = self.result?.measuredFwhmArcsec
+            let previousRecommendedMagnitude = self.result?.recommendedPsfMagnitude
             self.applyTarget(output.target)
             if let cache = output.imageCachePath {
                 self.params.imageCachePath = cache
             }
-            if let measuredFwhm = output.measuredFwhmArcsec {
+            if let measuredFwhm = output.measuredFwhmArcsec,
+               self.usesAutoValue(self.params.psfFwhmArcsec, previousAutoValue: previousMeasuredFwhm, defaultValue: 1.0, tolerance: 1.0e-4) {
                 self.params.psfFwhmArcsec = measuredFwhm
             }
-            if let recommendedMagnitude = output.recommendedPsfMagnitude {
+            if let recommendedMagnitude = output.recommendedPsfMagnitude,
+               self.usesAutoValue(self.params.psfMagnitude, previousAutoValue: previousRecommendedMagnitude, defaultValue: 18.0, tolerance: 1.0e-3) {
                 self.params.psfMagnitude = recommendedMagnitude
             }
             if let vmin = output.defaultVmin {
@@ -258,6 +262,11 @@ final class PipelineViewModel: ObservableObject {
         params.targetName = target.name
         params.raText = target.raText
         params.decText = target.decText
+    }
+
+    private func usesAutoValue(_ currentValue: Double, previousAutoValue: Double?, defaultValue: Double, tolerance: Double) -> Bool {
+        let reference = previousAutoValue ?? defaultValue
+        return abs(currentValue - reference) <= tolerance
     }
 
     private func merge(_ output: PipelineResult, into existing: PipelineResult?) -> PipelineResult {
