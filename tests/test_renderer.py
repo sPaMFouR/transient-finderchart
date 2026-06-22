@@ -10,17 +10,23 @@ from findingchart_guiplotter.renderer import (
     INSET_DISPLAY_LINEAR_SCALE,
     apply_rgb_stretch,
     arcsec_label,
+    resolve_annotation_color,
+    resolve_plot_colormap,
     estimate_catalog_flux_scale,
     recommended_injected_magnitude,
     injected_reference_mag,
     magnitude_flux_scale,
     catalog_source_color,
     contrast_stretch,
+    field_size_scale,
     image_display_extent,
     image_fov_arcsec,
     inset_source_box_arcsec,
     inset_axes_size_percent,
+    inset_crosshair_radii_pixels,
     inset_scalebar_length_arcsec,
+    main_crosshair_radii_pixels,
+    main_scalebar_length_for_field_arcsec,
     marker_unit_vectors,
     world_to_scalar_pixel,
 )
@@ -63,15 +69,32 @@ def test_marker_vectors_follow_east_left_north_up_wcs_orientation():
 
 
 def test_inset_axes_size_is_three_times_source_box_until_clamped():
-    width, height = inset_axes_size_percent(nx=600, ny=750, box_width=100, box_height=100)
+    width, height = inset_axes_size_percent(nx=600, ny=750)
 
     assert width == pytest.approx(100.0 * INSET_DISPLAY_LINEAR_SCALE * 100 / 600)
     assert height == pytest.approx(100.0 * INSET_DISPLAY_LINEAR_SCALE * 100 / 750)
 
 
-def test_inset_axes_size_has_readable_minimum_and_maximum():
-    assert inset_axes_size_percent(nx=10000, ny=10000, box_width=10, box_height=10) == pytest.approx((5.0, 5.0))
-    assert inset_axes_size_percent(nx=100, ny=100, box_width=100, box_height=100) == pytest.approx((55.0, 55.0))
+def test_inset_axes_size_keeps_default_square_size_and_readable_minimum():
+    assert inset_axes_size_percent(nx=100, ny=100) == pytest.approx((33.333333333333336, 33.333333333333336))
+    assert inset_axes_size_percent(nx=10000, ny=100) == pytest.approx((5.0, 33.333333333333336))
+
+
+def test_inset_zoom_changes_sampled_area_not_inset_frame_size():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((240, 360)),
+        wcs=centered_tan_wcs(target, nx=360, ny=240, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    default_box = inset_source_box_arcsec(image, ChartSettings(inset_zoom_factor=6.0))
+    zoomed_box = inset_source_box_arcsec(image, ChartSettings(inset_zoom_factor=12.0))
+
+    assert zoomed_box == pytest.approx(0.5 * default_box)
+    assert inset_axes_size_percent(nx=360, ny=240) == pytest.approx((22.22222222222222, 33.333333333333336))
 
 
 def test_inset_source_box_scales_with_image_fov():
@@ -120,10 +143,50 @@ def test_inset_scalebar_length_stays_below_third_fov_multiple_of_four():
     assert inset_scalebar_length_arcsec(scale=0.5, shape=(60, 80)) == pytest.approx(8.0)
 
 
+def test_main_scalebar_length_tracks_field_size_examples():
+    assert main_scalebar_length_for_field_arcsec(180.0) == pytest.approx(60.0)
+    assert main_scalebar_length_for_field_arcsec(120.0) == pytest.approx(60.0)
+    assert main_scalebar_length_for_field_arcsec(90.0) == pytest.approx(30.0)
+    assert main_scalebar_length_for_field_arcsec(60.0) == pytest.approx(24.0)
+
+
 def test_arcsec_label_formats_arcminutes():
     assert arcsec_label(60.0) == "1'"
     assert arcsec_label(120.0) == "2'"
+    assert arcsec_label(30.0) == "0.5'"
+    assert arcsec_label(24.0) == "0.4'"
     assert arcsec_label(28.0) == '28"'
+
+
+def test_crosshair_sizes_scale_linearly_with_field_size():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image_3arcmin = ImageData(
+        data=np.zeros((360, 360)),
+        wcs=centered_tan_wcs(target, nx=360, ny=360, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    image_1p5arcmin = ImageData(
+        data=np.zeros((180, 180)),
+        wcs=centered_tan_wcs(target, nx=180, ny=180, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    assert field_size_scale(image_3arcmin) == pytest.approx(1.0)
+    assert field_size_scale(image_1p5arcmin) == pytest.approx(0.5)
+
+    main_default = main_crosshair_radii_pixels(image_3arcmin)
+    main_small = main_crosshair_radii_pixels(image_1p5arcmin)
+    inset_default = inset_crosshair_radii_pixels(image_3arcmin, scale_arcsec_per_pix=0.5)
+    inset_small = inset_crosshair_radii_pixels(image_1p5arcmin, scale_arcsec_per_pix=0.5)
+
+    assert main_small[0] == pytest.approx(0.5 * main_default[0])
+    assert main_small[1] == pytest.approx(0.5 * main_default[1])
+    assert inset_small[0] == pytest.approx(0.5 * inset_default[0])
+    assert inset_small[1] == pytest.approx(0.5 * inset_default[1])
 
 
 def test_contrast_stretch_defaults_to_arcsinh_and_selects_modes():
@@ -131,6 +194,19 @@ def test_contrast_stretch_defaults_to_arcsinh_and_selects_modes():
     assert contrast_stretch(ChartSettings(contrast_stretch="linear")).__class__.__name__ == "LinearStretch"
     assert contrast_stretch(ChartSettings(contrast_stretch="sqrt")).__class__.__name__ == "SqrtStretch"
     assert contrast_stretch(ChartSettings(contrast_stretch="log")).__class__.__name__ == "LogStretch"
+
+
+def test_plot_colormap_defaults_and_supports_builtin_and_palette_maps():
+    assert resolve_plot_colormap("unknown").name == "gray_r"
+    assert resolve_plot_colormap("inferno").name == "inferno"
+    assert resolve_plot_colormap("icefire").name == "icefire"
+    assert resolve_plot_colormap("Hiroshige").name == "Hiroshige"
+
+
+def test_annotation_color_defaults_and_accepts_supported_choices():
+    assert resolve_annotation_color("unknown") == "xkcd:bright red"
+    assert resolve_annotation_color("xkcd:dodger blue") == "xkcd:dodger blue"
+    assert resolve_annotation_color("xkcd:bright yellow") == "xkcd:bright yellow"
 
 
 def test_apply_rgb_stretch_preserves_shape_and_bounds():
@@ -150,8 +226,8 @@ def test_injected_magnitude_scale_uses_catalog_style_flux_relation():
     assert magnitude_flux_scale(22.0, reference_mag=18.0) == pytest.approx(10 ** -1.6)
 
 
-def test_chart_settings_default_to_empirical_core_psf():
-    assert ChartSettings().psf_model == "empirical core"
+def test_chart_settings_default_to_moffat_psf():
+    assert ChartSettings().psf_model == "moffat"
 
 
 def test_catalog_flux_scale_uses_loaded_catalog_sources_as_zero_point():

@@ -18,6 +18,7 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 from matplotlib.figure import Figure
 from matplotlib.patches import ConnectionPatch, Polygon, Rectangle
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from pypalettes import load_cmap
 
 from .empirical_psf import (
     EmpiricalPSFError,
@@ -48,6 +49,21 @@ TEXT_COLOR = 'xkcd:dark'
 CROSSHAIR_COLOR = 'xkcd:dark red'
 SLIT_COLOR = 'xkcd:tomato'
 INSET_DISPLAY_LINEAR_SCALE = 2.0
+DEFAULT_INSET_ZOOM_FACTOR = 6.0
+SUPPORTED_COLORMAPS = ["gray_r", "inferno", "icefire", "twilight", "jet", "turbo", "Hiroshige", "viridis", "RdBu"]
+SUPPORTED_ANNOTATION_COLORS = [
+    "xkcd:bright red",
+    "xkcd:dodger blue",
+    "xkcd:black",
+    "xkcd:white",
+    "xkcd:turquoise",
+    "xkcd:bright yellow",
+]
+DEFAULT_FIELD_SIZE_ARCSEC = 180.0
+MAIN_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD = 1.8
+MAIN_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD = 5.6
+INSET_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD = 1.57
+INSET_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD = 4.1
 
 
 def apply_project_style() -> None:
@@ -168,8 +184,15 @@ def image_fov_arcsec(image: ImageData) -> float:
     return min(nx, ny) * pixel_scale_arcsec(image)
 
 
+def field_size_scale(image: ImageData) -> float:
+    field_arcsec = image_fov_arcsec(image)
+    if not np.isfinite(field_arcsec) or field_arcsec <= 0:
+        return 1.0
+    return field_arcsec / DEFAULT_FIELD_SIZE_ARCSEC
+
+
 def inset_source_box_arcsec(image: ImageData, settings: ChartSettings | None = None) -> float:
-    zoom_factor = 6.0 if settings is None else max(float(settings.inset_zoom_factor), 1.0)
+    zoom_factor = DEFAULT_INSET_ZOOM_FACTOR if settings is None else max(float(settings.inset_zoom_factor), 1.0)
     return image_fov_arcsec(image) / zoom_factor
 
 
@@ -333,6 +356,7 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
     data = image_with_injected_psf(image, target, settings)
     ny, nx = data.shape[:2]
     extent = image_display_extent(nx, ny)
+    cmap = resolve_plot_colormap(settings.colormap)
     if data.ndim == 3:
         if not settings.auto_contrast and settings.vmax is not None and settings.vmin is not None and settings.vmax > settings.vmin:
             data = np.clip((data - settings.vmin) / (settings.vmax - settings.vmin), 0, 1)
@@ -342,7 +366,7 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
     else:
         vmin, vmax = contrast_limits(original, settings)
         norm = ImageNormalize(vmin=vmin, vmax=vmax, stretch=contrast_stretch(settings))
-        ax.imshow(data, origin="lower", cmap="gray_r", norm=norm, extent=extent)
+        ax.imshow(data, origin="lower", cmap=cmap, norm=norm, extent=extent)
     ax.set_xlim(extent[0], extent[1])
     ax.set_ylim(extent[2], extent[3])
     ax.set_aspect("equal", adjustable="box")
@@ -366,11 +390,12 @@ def draw_chart(ax, image: ImageData, target: Target, settings: ChartSettings) ->
             fill=False,
             edgecolor=SLIT_COLOR,
             linewidth=0.7,
+            alpha=1.0,
         )
         ax.add_patch(polygon)
     if settings.show_compass:
-        draw_compass(ax, image)
-    draw_scale_ruler(ax, image, 60.0)
+        draw_compass(ax, image, settings)
+    draw_scale_ruler(ax, image, settings, main_scalebar_length_arcsec(image))
     draw_catalog_sources(ax, image, target, settings)
     ax.set_title(chart_title(image, target), fontsize=12, fontfamily=SCIENCE_FONT_FAMILY, pad=12)
 
@@ -400,6 +425,75 @@ def apply_rgb_stretch(data: np.ndarray, settings: ChartSettings) -> np.ndarray:
     stretch = contrast_stretch(settings)
     clipped = np.clip(np.nan_to_num(data, nan=0.0), 0, 1)
     return np.asarray(stretch(clipped), dtype=float)
+
+
+def resolve_plot_colormap(name: str):
+    cmap_name = (name or "gray_r").strip()
+    if cmap_name not in SUPPORTED_COLORMAPS:
+        cmap_name = "gray_r"
+    try:
+        return plt.get_cmap(cmap_name)
+    except ValueError:
+        return load_cmap(cmap_name)
+
+
+def resolve_annotation_color(name: str) -> str:
+    color_name = (name or "xkcd:bright red").strip()
+    if color_name not in SUPPORTED_ANNOTATION_COLORS:
+        return "xkcd:bright red"
+    return color_name
+
+
+def crosshair_radii_pixels(
+    image: ImageData,
+    *,
+    scale_arcsec_per_pix: float,
+    inner_arcsec_at_default_field: float,
+    outer_arcsec_at_default_field: float,
+) -> tuple[float, float]:
+    field_scale = field_size_scale(image)
+    inner = max(1.0, (inner_arcsec_at_default_field * field_scale) / max(scale_arcsec_per_pix, 1.0e-12))
+    outer = max(inner + 1.0, (outer_arcsec_at_default_field * field_scale) / max(scale_arcsec_per_pix, 1.0e-12))
+    return inner, outer
+
+
+def main_crosshair_radii_pixels(image: ImageData) -> tuple[float, float]:
+    return crosshair_radii_pixels(
+        image,
+        scale_arcsec_per_pix=pixel_scale_arcsec(image),
+        inner_arcsec_at_default_field=MAIN_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD,
+        outer_arcsec_at_default_field=MAIN_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD,
+    )
+
+
+def inset_crosshair_radii_pixels(image: ImageData, scale_arcsec_per_pix: float) -> tuple[float, float]:
+    return crosshair_radii_pixels(
+        image,
+        scale_arcsec_per_pix=scale_arcsec_per_pix,
+        inner_arcsec_at_default_field=INSET_CROSSHAIR_INNER_ARCSEC_AT_DEFAULT_FIELD,
+        outer_arcsec_at_default_field=INSET_CROSSHAIR_OUTER_ARCSEC_AT_DEFAULT_FIELD,
+    )
+
+
+def main_scalebar_length_for_field_arcsec(field_arcsec: float) -> float:
+    if not np.isfinite(field_arcsec) or field_arcsec <= 0:
+        return 24.0
+    lower = field_arcsec / 3.0
+    upper = field_arcsec / 2.0
+    candidates = [12.0, 24.0]
+    limit = int(math.ceil(max(upper, 30.0) / 30.0)) + 2
+    candidates.extend(30.0 * step for step in range(1, limit + 1))
+    valid = [candidate for candidate in candidates if candidate <= upper + 1.0e-6]
+    if not valid:
+        return max(1.0, math.floor(upper))
+    preferred = [candidate for candidate in valid if candidate >= lower - 1.0e-6]
+    if preferred:
+        return min(preferred)
+    return max(valid)
+
+
+def main_scalebar_length_arcsec(image: ImageData) -> float:
+    return main_scalebar_length_for_field_arcsec(image_fov_arcsec(image))
 
 
 def chart_title(image: ImageData, target: Target) -> str:
@@ -432,6 +526,7 @@ def target_sexagesimal(target: Target) -> tuple[str, str]:
 
 
 def draw_metadata_box(ax, image: ImageData, target: Target, settings: ChartSettings) -> None:
+    annotation_color = resolve_annotation_color(settings.annotation_color)
     ra_text, dec_text = target_sexagesimal(target)
     text = "\n".join(
         [
@@ -448,7 +543,7 @@ def draw_metadata_box(ax, image: ImageData, target: Target, settings: ChartSetti
         transform=ax.transAxes,
         ha="left",
         va="top",
-        color="xkcd:bright red",
+        color="xkcd:red",
         fontsize=10,
         fontfamily=SCIENCE_FONT_FAMILY,
         linespacing=1.2,
@@ -489,6 +584,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     box_bottom = y1 - 0.5
     box_top = y2 - 0.5
     pixel_transform = pixel_artist_transform(ax)
+    annotation_color = resolve_annotation_color(settings.annotation_color)
     ax.add_patch(
         Rectangle(
             (box_left, box_bottom),
@@ -496,14 +592,13 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
             box_top - box_bottom,
             transform=pixel_transform,
             fill=False,
-            edgecolor="black",
+            edgecolor=annotation_color,
             linewidth=0.5,
             alpha=0.65,
         )
     )
     
-    nominal_box_size = 2 * half_size_pix + 1
-    inset_width, inset_height = inset_axes_size_percent(nx, ny, nominal_box_size, nominal_box_size)
+    inset_width, inset_height = inset_axes_size_percent(nx, ny)
     inset = inset_axes(ax, width=f"{inset_width:.2f}%", height=f"{inset_height:.2f}%", loc="upper right", borderpad=1.1)
     stamp = data[y1:y2, x1:x2]
     stamp_ny, stamp_nx = stamp.shape[:2]
@@ -511,7 +606,7 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
     if data.ndim == 3:
         inset.imshow(np.clip(stamp, 0, 1), origin="lower", extent=stamp_extent)
     else:
-        inset.imshow(stamp, origin="lower", cmap="gray_r", norm=norm, extent=stamp_extent)
+        inset.imshow(stamp, origin="lower", cmap=resolve_plot_colormap(settings.colormap), norm=norm, extent=stamp_extent)
     inset.set_xlim(stamp_extent[0], stamp_extent[1])
     inset.set_ylim(stamp_extent[2], stamp_extent[3])
     inset.set_aspect("equal", adjustable="box")
@@ -521,15 +616,15 @@ def draw_inset(ax, image: ImageData, data: np.ndarray, target: Target, settings:
         spine.set_edgecolor("black")
         spine.set_linewidth(0.6)
     inset._finding_chart_pixel_offset = (float(x1), float(y1))
-    connect_inset_to_source_box(ax, inset, box_left, box_right, box_bottom, box_top)
+    connect_inset_to_source_box(ax, inset, box_left, box_right, box_bottom, box_top, annotation_color)
     if settings.show_slit:
         draw_inset_slit(inset, image, target, settings, x1, y1)
     draw_catalog_sources_inset(inset, image, target, settings, x1, y1, stamp.shape[:2])
     local_x = x0 - x1
     local_y = y0 - y1
     draw_inset_marker(inset, image, target, settings, scale, local_x, local_y)
-    draw_inset_scalebar(inset, scale, stamp.shape[:2])
-    draw_inset_sn_label(inset, target.label, local_x, local_y)
+    draw_inset_scalebar(inset, settings, scale, stamp.shape[:2])
+    draw_inset_sn_label(inset, settings, target.label, local_x, local_y)
 
 
 def connect_inset_to_source_box(
@@ -539,6 +634,7 @@ def connect_inset_to_source_box(
     x2: float,
     y1: float,
     y2: float,
+    color: str,
 ) -> None:
     # The inset is in the upper-right, so connect its LEFT edge
     # to the RIGHT edge of the source box.
@@ -557,7 +653,7 @@ def connect_inset_to_source_box(
             axesB=ax,
             arrowstyle="-",
             connectionstyle="arc3",
-            color="black",
+            color=color,
             linewidth=0.5,
             alpha=0.75,
             clip_on=False,
@@ -593,9 +689,10 @@ def connect_inset_to_source_box(
 #         ax.add_artist(connection)
 
 
-def inset_axes_size_percent(nx: int, ny: int, box_width: int, box_height: int) -> tuple[float, float]:
-    width_percent = 100.0 * INSET_DISPLAY_LINEAR_SCALE * max(box_width, 1) / max(nx, 1)
-    height_percent = 100.0 * INSET_DISPLAY_LINEAR_SCALE * max(box_height, 1) / max(ny, 1)
+def inset_axes_size_percent(nx: int, ny: int) -> tuple[float, float]:
+    reference_box_size = max(min(nx, ny) / DEFAULT_INSET_ZOOM_FACTOR, 1.0)
+    width_percent = 100.0 * INSET_DISPLAY_LINEAR_SCALE * reference_box_size / max(nx, 1)
+    height_percent = 100.0 * INSET_DISPLAY_LINEAR_SCALE * reference_box_size / max(ny, 1)
     width_percent = min(max(width_percent, 5.0), 55.0)
     height_percent = min(max(height_percent, 5.0), 55.0)
     return width_percent, height_percent
@@ -610,6 +707,7 @@ def draw_inset_slit(inset, image: ImageData, target: Target, settings: ChartSett
             fill=False,
             edgecolor=SLIT_COLOR,
             linewidth=0.6,
+            alpha=1.0,
             clip_on=True,
         )
     )
@@ -624,27 +722,36 @@ def draw_inset_marker(
     x: float,
     y: float,
 ) -> None:
-    inner = max(6.0, 0.9 / scale)
-    outer = max(inner + 8.0, 4.1 / scale)
-    draw_crosshair_segments(inset, x, y, marker_unit_vectors(image, target), inner, outer, color=CROSSHAIR_COLOR, linewidth=1.2)
+    inner, outer = inset_crosshair_radii_pixels(image, scale)
+    draw_crosshair_segments(
+        inset,
+        x,
+        y,
+        marker_unit_vectors(image, target),
+        inner,
+        outer,
+        color=resolve_annotation_color(settings.annotation_color),
+        linewidth=1.2,
+    )
 
 
-def draw_inset_scalebar(inset, scale: float, shape: tuple[int, int]) -> None:
+def draw_inset_scalebar(inset, settings: ChartSettings, scale: float, shape: tuple[int, int]) -> None:
     ny, nx = shape
     length_arcsec = inset_scalebar_length_arcsec(scale, shape)
     length_pix = length_arcsec / scale
     x0 = 0.5 * (nx - length_pix)
     y0 = 0.88 * ny
     tick = 1
-    inset.plot([x0, x0 + length_pix], [y0, y0], color=SLIT_COLOR, lw=1.2)
-    inset.plot([x0, x0], [y0 - tick, y0 + tick], color=SLIT_COLOR, lw=0.8)
-    inset.plot([x0 + length_pix, x0 + length_pix], [y0 - tick, y0 + tick], color=SLIT_COLOR, lw=0.8)
+    annotation_color = resolve_annotation_color(settings.annotation_color)
+    inset.plot([x0, x0 + length_pix], [y0, y0], color=annotation_color, lw=1.2)
+    inset.plot([x0, x0], [y0 - tick, y0 + tick], color=annotation_color, lw=0.8)
+    inset.plot([x0 + length_pix, x0 + length_pix], [y0 - tick, y0 + tick], color=annotation_color, lw=0.8)
     
     inset.text(
         x0 + 0.54 * length_pix,
         y0 - 4,
         arcsec_label(length_arcsec),
-        color=SLIT_COLOR,
+        color="xkcd:red",
         ha="center",
         va="top",
         fontsize=10,
@@ -668,10 +775,13 @@ def arcsec_label(length_arcsec: float) -> str:
         return "1\'"
     if abs(length_arcsec % 60.0) < 1e-6:
         return f"{length_arcsec / 60.0:.0f}'"
+    if length_arcsec >= 12.0 and abs((length_arcsec / 6.0) - round(length_arcsec / 6.0)) < 1e-6:
+        return f"{length_arcsec / 60.0:.1f}'"
     return f'{length_arcsec:.0f}"'
 
 
-def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
+def draw_inset_sn_label(inset, settings: ChartSettings, label: str, x: float, y: float) -> None:
+    annotation_color = resolve_annotation_color(settings.annotation_color)
     annotation = inset.annotate(
         label,
         xy=(x, y),
@@ -680,14 +790,14 @@ def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
         textcoords="axes fraction",
         ha="center",
         va="top",
-        color=SLIT_COLOR,
+        color=annotation_color,
         fontsize=9,
         fontfamily=SCIENCE_FONT_FAMILY,
         weight="bold",
         arrowprops={
             "arrowstyle": "->",
             "linewidth": 1.0,
-            "color": CROSSHAIR_COLOR,
+            "color": annotation_color,
             "shrinkA": 0,
             "shrinkB": 4,
         },
@@ -705,10 +815,17 @@ def draw_inset_sn_label(inset, label: str, x: float, y: float) -> None:
     
     
 def draw_sn_marker(ax, image: ImageData, target: Target, settings: ChartSettings, x: float, y: float) -> None:
-    scale = pixel_scale_arcsec(image)
-    inner = max(5.0, 1.8 / scale)
-    outer = max(inner + 11.0, 5.6 / scale)
-    draw_crosshair_segments(ax, x, y, marker_unit_vectors(image, target), inner, outer, color=CROSSHAIR_COLOR, linewidth=0.7)
+    inner, outer = main_crosshair_radii_pixels(image)
+    draw_crosshair_segments(
+        ax,
+        x,
+        y,
+        marker_unit_vectors(image, target),
+        inner,
+        outer,
+        color=resolve_annotation_color(settings.annotation_color),
+        linewidth=0.7,
+    )
     
     # ax.annotate(
 #         target.label,
@@ -746,7 +863,7 @@ def draw_crosshair_segments(ax, x: float, y: float, vectors, inner: float, outer
         ax.plot([x - ux * inner, x - ux * outer], [y - uy * inner, y - uy * outer], **kwargs)
 
 
-def draw_compass(ax, image: ImageData) -> None:
+def draw_compass(ax, image: ImageData, settings: ChartSettings) -> None:
     ny, nx = image.data.shape[:2]
     base_x = 0.94 * nx
     base_y = 0.04 * ny
@@ -756,16 +873,17 @@ def draw_compass(ax, image: ImageData) -> None:
     east = center.spherical_offsets_by(length_arcsec * u.arcsec, 0 * u.arcsec)
     north_x, north_y = world_to_scalar_pixel(image, north)
     east_x, east_y = world_to_scalar_pixel(image, east)
-    ax.plot(base_x, base_y, color=SLIT_COLOR, marker='o', ms=5)
-    ax.annotate("", xy=(north_x, north_y), xytext=(base_x, base_y), arrowprops={"arrowstyle": "->", "color": SLIT_COLOR, "lw": 0.9})
-    ax.annotate("", xy=(east_x, east_y), xytext=(base_x, base_y), arrowprops={"arrowstyle": "->", "color": SLIT_COLOR, "lw": 0.9})
-    ax.text(north_x, north_y, "N", color=SLIT_COLOR, fontsize=10, weight="bold", ha="center", va="bottom")
+    annotation_color = resolve_annotation_color(settings.annotation_color)
+    ax.plot(base_x, base_y, color=annotation_color, marker='o', ms=5)
+    ax.annotate("", xy=(north_x, north_y), xytext=(base_x, base_y), arrowprops={"arrowstyle": "->", "color": annotation_color, "lw": 0.9})
+    ax.annotate("", xy=(east_x, east_y), xytext=(base_x, base_y), arrowprops={"arrowstyle": "->", "color": annotation_color, "lw": 0.9})
+    ax.text(north_x, north_y, "N", color=annotation_color, fontsize=10, weight="bold", ha="center", va="bottom")
     ax.annotate(
         "E",
         xy=(east_x, east_y),
         xytext=(-2, 0),
         textcoords="offset points",
-        color=SLIT_COLOR,
+        color=annotation_color,
         fontsize=10,
         weight="bold",
         ha="right",
@@ -773,7 +891,7 @@ def draw_compass(ax, image: ImageData) -> None:
     )
 
 
-def draw_scale_ruler(ax, image: ImageData, length_arcsec: float) -> None:
+def draw_scale_ruler(ax, image: ImageData, settings: ChartSettings, length_arcsec: float) -> None:
     ny, nx = image.data.shape[:2]
     center_x = 0.50 * nx
     center_y = 0.03 * ny
@@ -782,15 +900,16 @@ def draw_scale_ruler(ax, image: ImageData, length_arcsec: float) -> None:
     right = center.spherical_offsets_by((length_arcsec / 2.0) * u.arcsec, 0 * u.arcsec)
     left_x, left_y = world_to_scalar_pixel(image, left)
     right_x, right_y = world_to_scalar_pixel(image, right)
-    ax.plot([left_x, right_x], [left_y, right_y], color=SLIT_COLOR, lw=2.0, solid_capstyle="butt")
+    annotation_color = resolve_annotation_color(settings.annotation_color)
+    ax.plot([left_x, right_x], [left_y, right_y], color=annotation_color, lw=2.0, solid_capstyle="butt")
     tick = max(2.0, 0.8 / pixel_scale_arcsec(image))
-    ax.plot([left_x, left_x], [left_y - tick, left_y + tick], color=SLIT_COLOR, lw=1.2)
-    ax.plot([right_x, right_x], [right_y - tick, right_y + tick], color=SLIT_COLOR, lw=1.2)
+    ax.plot([left_x, left_x], [left_y - tick, left_y + tick], color=annotation_color, lw=1.2)
+    ax.plot([right_x, right_x], [right_y - tick, right_y + tick], color=annotation_color, lw=1.2)
     ax.text(
         center_x,
         center_y + 2.5 * tick,
         arcsec_label(length_arcsec),
-        color=SLIT_COLOR,
+        color=annotation_color,
         fontsize=12,
         weight="bold",
         ha="center",
