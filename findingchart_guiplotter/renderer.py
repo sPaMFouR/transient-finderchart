@@ -655,6 +655,10 @@ def connect_inset_to_source_box(
         ((0.0, 1.0), (x2, y2)),  # inset top-left -> box top-right
         ((1.0, 0.0), (x2, y1)),  # inset bottom-left -> box bottom-right
     ]
+    connector_zorder = max(
+        artist.get_zorder()
+        for artist in [ax.patch, inset.patch, *list(ax.images), *list(inset.images)]
+    ) + 1.0
 
     for inset_xy, box_xy in pairs:
         connection = ConnectionPatch(
@@ -670,7 +674,7 @@ def connect_inset_to_source_box(
             linewidth=0.5,
             alpha=0.75,
             clip_on=False,
-            zorder=-5,
+            zorder=connector_zorder,
         )
 
         # Do not let layout calculations alter or suppress the connector.

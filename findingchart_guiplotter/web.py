@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .catalog import query_catalog_sources
+from .catalog import DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC, query_catalog_sources
 from .image_fetchers import fetch_image, mode_and_band_from_filter_choice, preferred_filter_choice
 from .models import ChartSettings, ImageRequest, Target
 from .renderer import export_chart, measured_image_fwhm_arcsec
@@ -100,7 +100,12 @@ def render_from_payload(payload: dict) -> str:
     catalog_sources = []
     catalog = str(payload.get("catalog") or "None")
     if catalog != "None":
-        catalog_sources = query_catalog_sources(target, request.size_arcmin / 2.0, catalog)
+        catalog_sources = query_catalog_sources(
+            target,
+            request.size_arcmin / 2.0,
+            catalog,
+            max_distance_arcsec=float(payload.get("catalog_max_distance_arcsec") or DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC),
+        )
     image = fetch_image(target, request)
     measured_fwhm_arcsec = None
     try:
@@ -216,6 +221,7 @@ INDEX_HTML = """<!doctype html>
         <fieldset>
           <legend>Overlays</legend>
           <label>Catalog <select name="catalog"><option>None</option><option>Gaia DR3</option><option>Pan-STARRS DR2</option><option>Gaia DR3 + Pan-STARRS DR2</option></select></label>
+          <label>Catalog max distance <input name="catalog_max_distance_arcsec" value="10.0"></label>
           <label class="check"><input type="checkbox" name="show_injected_source" checked> Inject SN</label>
           <label>SN mag <input name="psf_magnitude" type="number" min="8" max="24" step="0.1" value="18.0"></label>
           <label>PSF model <select name="psf_model"><option>moffat</option><option>empirical core</option><option>empirical hybrid</option><option>gaussian taper</option></select></label>

@@ -41,7 +41,7 @@ from .qt_compat import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from .catalog import CatalogSource, query_catalog_sources
+from .catalog import CatalogSource, DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC, query_catalog_sources
 from .exporting import default_export_filename, ensure_export_suffix
 from .image_fetchers import (
     available_filter_choices,
@@ -479,8 +479,14 @@ class MainWindow(QMainWindow):
         self.catalog_mag_cut_check.stateChanged.connect(
             lambda: self.catalog_mag_cut_spin.setEnabled(self.catalog_mag_cut_check.isChecked())
         )
+        self.catalog_distance_cut_spin = QDoubleSpinBox()
+        self.catalog_distance_cut_spin.setRange(0.1, 600.0)
+        self.catalog_distance_cut_spin.setDecimals(1)
+        self.catalog_distance_cut_spin.setValue(DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC)
+        self.catalog_distance_cut_spin.setSuffix(" arcsec")
         catalog_cut_form.addRow(self.catalog_mag_cut_check)
         catalog_cut_form.addRow("Max magnitude", self.catalog_mag_cut_spin)
+        catalog_cut_form.addRow("Max distance", self.catalog_distance_cut_spin)
         catalog_controls = QHBoxLayout()
         self.catalog_button = QPushButton("Query Catalog")
         self.catalog_button.clicked.connect(self.query_catalog)
@@ -763,6 +769,7 @@ class MainWindow(QMainWindow):
             catalog,
             200,
             max_magnitude,
+            self.catalog_distance_cut_spin.value(),
         )
 
     def _catalog_loaded(self, sources: list[CatalogSource]) -> None:

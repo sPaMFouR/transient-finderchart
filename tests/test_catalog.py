@@ -1,6 +1,16 @@
 import requests
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 
-from findingchart_guiplotter.catalog import parse_gaia_vizier_tsv, parse_panstarrs_dr2_csv, query_catalog_sources, query_gaia_dr3
+from findingchart_guiplotter.catalog import (
+    DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC,
+    filter_sources_by_distance,
+    parse_gaia_vizier_tsv,
+    parse_panstarrs_dr2_csv,
+    query_catalog_sources,
+    query_gaia_dr3,
+    CatalogSource,
+)
 from findingchart_guiplotter.models import Target
 
 
@@ -102,3 +112,42 @@ def test_query_catalog_sources_dispatches_combined_catalog(monkeypatch):
 
     assert sources == ["gaia", "ps1"]
     assert calls == [("gaia", target, 1.5, 50, 20.5), ("ps1", target, 1.5, 50, 20.5)]
+
+
+def test_filter_sources_by_distance_keeps_only_sources_within_cutoff():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+    near = target_coord.spherical_offsets_by(6.0 * u.arcsec, 0.0 * u.arcsec)
+    far = target_coord.spherical_offsets_by(14.0 * u.arcsec, 0.0 * u.arcsec)
+    sources = [
+        CatalogSource(ra_deg=near.ra.deg, dec_deg=near.dec.deg, label="near"),
+        CatalogSource(ra_deg=far.ra.deg, dec_deg=far.dec.deg, label="far"),
+    ]
+
+    filtered = filter_sources_by_distance(target, sources, DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC)
+
+    assert [source.label for source in filtered] == ["near"]
+
+
+def test_query_catalog_sources_applies_distance_cut_after_query(monkeypatch):
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+    near = target_coord.spherical_offsets_by(4.0 * u.arcsec, 0.0 * u.arcsec)
+    far = target_coord.spherical_offsets_by(18.0 * u.arcsec, 0.0 * u.arcsec)
+
+    def fake_gaia(*args, **kwargs):
+        return [
+            CatalogSource(ra_deg=near.ra.deg, dec_deg=near.dec.deg, label="Gaia near"),
+            CatalogSource(ra_deg=far.ra.deg, dec_deg=far.dec.deg, label="Gaia far"),
+        ]
+
+    monkeypatch.setattr("findingchart_guiplotter.catalog.query_gaia_dr3", fake_gaia)
+
+    sources = query_catalog_sources(
+        target,
+        1.5,
+        "Gaia DR3",
+        max_distance_arcsec=DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC,
+    )
+
+    assert [source.label for source in sources] == ["Gaia near"]

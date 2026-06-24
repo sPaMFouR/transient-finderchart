@@ -2,6 +2,9 @@ import numpy as np
 import pytest
 from astropy import units as u
 from astropy.coordinates import SkyCoord
+from matplotlib.figure import Figure
+from matplotlib.patches import ConnectionPatch
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from findingchart_guiplotter.image_fetchers import centered_tan_wcs
 from findingchart_guiplotter.models import ChartSettings, ImageData, Target
@@ -20,6 +23,7 @@ from findingchart_guiplotter.renderer import (
     injected_reference_mag,
     magnitude_flux_scale,
     catalog_source_color,
+    connect_inset_to_source_box,
     contrast_stretch,
     field_size_scale,
     image_display_extent,
@@ -81,6 +85,25 @@ def test_inset_axes_size_is_three_times_source_box_until_clamped():
 def test_inset_axes_size_keeps_default_square_size_and_readable_minimum():
     assert inset_axes_size_percent(nx=100, ny=100) == pytest.approx((33.333333333333336, 33.333333333333336))
     assert inset_axes_size_percent(nx=10000, ny=100) == pytest.approx((5.0, 33.333333333333336))
+
+
+def test_inset_connectors_draw_above_main_and_inset_images():
+    fig = Figure()
+    ax = fig.add_subplot(111)
+    ax.imshow(np.zeros((20, 20)), origin="lower")
+    inset = inset_axes(ax, width="30%", height="30%", loc="upper right")
+    inset.imshow(np.ones((6, 6)), origin="lower")
+
+    connect_inset_to_source_box(ax, inset, 5.0, 10.0, 5.0, 10.0, "red")
+
+    connectors = [artist for artist in fig.artists if isinstance(artist, ConnectionPatch)]
+    background_zorder = max(
+        artist.get_zorder()
+        for artist in [ax.patch, inset.patch, *list(ax.images), *list(inset.images)]
+    )
+
+    assert len(connectors) == 2
+    assert all(connector.get_zorder() > background_zorder for connector in connectors)
 
 
 def test_inset_zoom_changes_sampled_area_not_inset_frame_size():

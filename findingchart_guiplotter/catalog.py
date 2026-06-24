@@ -5,12 +5,15 @@ from dataclasses import dataclass
 from io import StringIO
 
 import requests
+from astropy import units as u
+from astropy.coordinates import SkyCoord
 
 from .models import Target
 
 GAIA_TAP_SYNC_URL = "https://gea.esac.esa.int/tap-server/tap/sync"
 GAIA_VIZIER_TSV_URL = "https://vizier.cds.unistra.fr/viz-bin/asu-tsv"
 REQUEST_HEADERS = {"User-Agent": "transient-finderchart/0.1"}
+DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC = 10.0
 
 
 @dataclass
@@ -207,16 +210,35 @@ def query_catalog_sources(
     catalog: str,
     limit: int = 200,
     max_magnitude: float | None = None,
+    max_distance_arcsec: float | None = None,
 ) -> list[CatalogSource]:
     if catalog == "Gaia DR3":
-        return query_gaia_dr3(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
-    if catalog == "Pan-STARRS DR2":
-        return query_panstarrs_dr2(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
-    if catalog == "Gaia DR3 + Pan-STARRS DR2":
+        sources = query_gaia_dr3(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
+    elif catalog == "Pan-STARRS DR2":
+        sources = query_panstarrs_dr2(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
+    elif catalog == "Gaia DR3 + Pan-STARRS DR2":
         gaia_sources = query_gaia_dr3(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
         ps1_sources = query_panstarrs_dr2(target, radius_arcmin, limit=limit, max_magnitude=max_magnitude)
-        return (gaia_sources + ps1_sources)[: 2 * limit]
-    raise ValueError(f"Unsupported catalog: {catalog}")
+        sources = (gaia_sources + ps1_sources)[: 2 * limit]
+    else:
+        raise ValueError(f"Unsupported catalog: {catalog}")
+    return filter_sources_by_distance(target, sources, max_distance_arcsec)
+
+
+def filter_sources_by_distance(
+    target: Target, sources: list[CatalogSource], max_distance_arcsec: float | None
+) -> list[CatalogSource]:
+    if max_distance_arcsec is None:
+        return list(sources)
+
+    cutoff_arcsec = float(max_distance_arcsec)
+    target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
+    filtered: list[CatalogSource] = []
+    for source in sources:
+        source_coord = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
+        if source_coord.separation(target_coord).arcsec <= cutoff_arcsec:
+            filtered.append(source)
+    return filtered
 
 
 def parse_optional_float(value: str | None) -> float | None:
