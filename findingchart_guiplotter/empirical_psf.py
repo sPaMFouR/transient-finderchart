@@ -187,7 +187,7 @@ def build_empirical_psf(
     *,
     stamp_size: int,
     edge_width: int = 5,
-    min_stars: int = 3,
+    min_stars: int = 2,
     max_recentering: float = 5.0,
 ) -> tuple[np.ndarray, list[tuple[float, float]], np.ndarray]:
     half = stamp_size // 2
@@ -395,7 +395,7 @@ def _estimate_field_fwhm_once(
         exclude_xy=exclude_xy,
         exclude_radius=max(float(exclude_radius or 0.0), 10.0, 3.0 * guess),
     )
-    kernel, used_coords, _ = build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=3)
+    kernel, used_coords, _ = build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=2)
     return measure_psf_fwhm(kernel), len(used_coords)
 
 
@@ -558,6 +558,7 @@ def empirical_psf_from_field(
     y: float,
     *,
     fwhm_pix: float,
+    injected_fwhm_pix: float | None = None,
     threshold_sigma: float = 5.0,
     psf_model: str = "empirical core",
 ) -> tuple[np.ndarray, list[tuple[float, float]], np.ndarray]:
@@ -570,8 +571,9 @@ def empirical_psf_from_field(
         exclude_xy=(x, y),
         exclude_radius=max(10.0, 3.0 * fwhm_pix),
     )
-    kernel, used_coords, fluxes = build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=3)
-    return select_injected_psf_model(kernel, fwhm_pix, psf_model), used_coords, fluxes
+    kernel, used_coords, fluxes = build_empirical_psf(data, coords, stamp_size=stamp_size, min_stars=2)
+    model_fwhm_pix = fwhm_pix if injected_fwhm_pix is None else max(float(injected_fwhm_pix), 1.0)
+    return select_injected_psf_model(kernel, model_fwhm_pix, psf_model), used_coords, fluxes
 
 
 def shift_psf_to_subpixel(psf: np.ndarray, dx: float, dy: float) -> np.ndarray:

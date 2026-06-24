@@ -24,6 +24,7 @@ from .empirical_psf import (
     EmpiricalPSFError,
     empirical_psf_from_field,
     estimate_field_fwhm,
+    gaussian_kernel,
     inject_psf,
     injection_stamp_size,
     measurement_plane,
@@ -190,17 +191,64 @@ def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSet
     fwhm_pix = max(settings.psf_fwhm_arcsec / scale, 1.0)
     fallback_size = injection_stamp_size(fwhm_pix, empirical_size=25)
     psf_model = normalize_psf_model(settings.psf_model)
+    measurement_data = measurement_plane(data) if data.ndim == 3 else data
+    calibration_fwhm_pix = field_calibration_fwhm_pixels(measurement_data, scale, x0, y0)
     if data.ndim == 3:
-        kernel = moffat_kernel(fwhm_pix, size=fallback_size)
-        total_flux = injected_total_flux_from_peak_snr(data, settings, kernel)
+        try:
+            kernel, _, psf_star_fluxes = empirical_psf_from_field(
+                measurement_data,
+                x0,
+                y0,
+                fwhm_pix=calibration_fwhm_pix,
+                injected_fwhm_pix=fwhm_pix,
+                psf_model=psf_model,
+            )
+            total_flux = estimate_target_flux_from_field(
+                measurement_data,
+                image,
+                target,
+                settings,
+                calibration_fwhm_pix,
+                psf_star_fluxes=psf_star_fluxes,
+            )
+        except (EmpiricalPSFError, ValueError, RuntimeError):
+            kernel = analytic_fallback_kernel(fwhm_pix, fallback_size, psf_model)
+            total_flux = estimate_target_flux_from_field(
+                measurement_data,
+                image,
+                target,
+                settings,
+                calibration_fwhm_pix,
+            )
         for channel in range(data.shape[2]):
             data[..., channel] = np.clip(inject_psf(data[..., channel], kernel, x0, y0, total_flux), 0, 1)
         return data
     try:
-        kernel, _, _ = empirical_psf_from_field(data, x0, y0, fwhm_pix=fwhm_pix, psf_model=psf_model)
+        kernel, _, psf_star_fluxes = empirical_psf_from_field(
+            measurement_data,
+            x0,
+            y0,
+            fwhm_pix=calibration_fwhm_pix,
+            injected_fwhm_pix=fwhm_pix,
+            psf_model=psf_model,
+        )
+        total_flux = estimate_target_flux_from_field(
+            measurement_data,
+            image,
+            target,
+            settings,
+            calibration_fwhm_pix,
+            psf_star_fluxes=psf_star_fluxes,
+        )
     except (EmpiricalPSFError, ValueError, RuntimeError):
-        kernel = moffat_kernel(fwhm_pix, size=fallback_size)
-    total_flux = injected_total_flux_from_peak_snr(data, settings, kernel)
+        kernel = analytic_fallback_kernel(fwhm_pix, fallback_size, psf_model)
+        total_flux = estimate_target_flux_from_field(
+            measurement_data,
+            image,
+            target,
+            settings,
+            calibration_fwhm_pix,
+        )
     finite = data[np.isfinite(data)]
     fill = np.nanmedian(finite) if finite.size else 0.0
     return inject_psf(np.nan_to_num(data, nan=fill), kernel, x0, y0, total_flux)
@@ -208,6 +256,26 @@ def image_with_injected_psf(image: ImageData, target: Target, settings: ChartSet
 
 def rgb_visual_flux(settings: ChartSettings) -> float:
     return 0.08 * magnitude_flux_scale(settings.psf_magnitude, reference_mag=18.0)
+
+
+def analytic_fallback_kernel(fwhm_pix: float, size: int, psf_model: str) -> np.ndarray:
+    if normalize_psf_model(psf_model) == "gaussian taper":
+        return gaussian_kernel(fwhm_pix, size=size)
+    return moffat_kernel(fwhm_pix, size=size)
+
+
+def field_calibration_fwhm_pixels(data: np.ndarray, scale_arcsec_per_pix: float, x: float, y: float) -> float:
+    guess = float(np.clip(1.0 / max(scale_arcsec_per_pix, 1.0e-12), 2.0, 6.0))
+    try:
+        field_fwhm_pix, _ = estimate_field_fwhm(
+            data,
+            fwhm_guess_pix=guess,
+            exclude_xy=(x, y),
+            exclude_radius=max(10.0, 3.0 * guess),
+        )
+        return max(float(field_fwhm_pix), 1.0)
+    except (EmpiricalPSFError, ValueError, RuntimeError):
+        return guess
 
 
 def magnitude_flux_scale(magnitude: float, reference_mag: float = 18.0) -> float:
@@ -740,16 +808,9 @@ def draw_inset_marker(
     y: float,
 ) -> None:
     inner, outer = inset_crosshair_radii_pixels(image, scale, settings.psf_fwhm_arcsec, settings.inset_zoom_factor)
-    draw_crosshair_segments(
-        inset,
-        x,
-        y,
-        marker_unit_vectors(image, target),
-        inner,
-        outer,
-        color=resolve_annotation_color(settings.annotation_color),
-        linewidth=1.2,
-    )
+    color = resolve_annotation_color(settings.annotation_color)
+    inset.plot([x, x], [y + inner, y + outer], color=color, linewidth=1.2, solid_capstyle="butt")
+    inset.plot([x + inner, x + outer], [y, y], color=color, linewidth=1.2, solid_capstyle="butt")
 
 
 def draw_inset_scalebar(inset, settings: ChartSettings, scale: float, shape: tuple[int, int]) -> None:
@@ -852,6 +913,7 @@ def draw_sn_marker(ax, image: ImageData, target: Target, settings: ChartSettings
         outer,
         color=resolve_annotation_color(settings.annotation_color),
         linewidth=0.7,
+        alpha=0.8,
     )
     
     # ax.annotate(
@@ -883,8 +945,10 @@ def normalize_vector(dx: float, dy: float) -> tuple[float, float]:
     return dx / length, dy / length
 
 
-def draw_crosshair_segments(ax, x: float, y: float, vectors, inner: float, outer: float, color: str, linewidth: float) -> None:
-    kwargs = {"color": color, "lw": linewidth, "solid_capstyle": "butt"}
+def draw_crosshair_segments(
+    ax, x: float, y: float, vectors, inner: float, outer: float, color: str, linewidth: float, alpha: float = 1.0
+) -> None:
+    kwargs = {"color": color, "lw": linewidth, "solid_capstyle": "butt", "alpha": alpha}
     for ux, uy in vectors:
         ax.plot([x + ux * inner, x + ux * outer], [y + uy * inner, y + uy * outer], **kwargs)
         ax.plot([x - ux * inner, x - ux * outer], [y - uy * inner, y - uy * outer], **kwargs)

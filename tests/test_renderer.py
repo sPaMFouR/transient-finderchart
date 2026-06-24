@@ -16,9 +16,11 @@ from findingchart_guiplotter.renderer import (
     background_noise_sigma,
     compass_length_arcsec,
     injected_total_flux_from_peak_snr,
+    analytic_fallback_kernel,
     resolve_annotation_color,
     resolve_plot_colormap,
     estimate_catalog_flux_scale,
+    image_with_injected_psf,
     recommended_injected_magnitude,
     injected_reference_mag,
     magnitude_flux_scale,
@@ -37,7 +39,7 @@ from findingchart_guiplotter.renderer import (
     marker_unit_vectors,
     world_to_scalar_pixel,
 )
-from findingchart_guiplotter.empirical_psf import inject_psf, moffat_kernel
+from findingchart_guiplotter.empirical_psf import EmpiricalPSFError, inject_psf, moffat_kernel
 
 
 def test_centered_wcs_maps_target_to_displayed_pixel_center():
@@ -436,3 +438,140 @@ def test_injected_flux_tracks_peak_snr_consistently_across_fov_changes():
 
     assert wide_peak_snr == pytest.approx(20.0)
     assert narrow_peak_snr == pytest.approx(20.0)
+
+
+def test_image_injection_uses_field_flux_scale_when_empirical_psf_is_available(monkeypatch):
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.zeros((101, 101)),
+        wcs=centered_tan_wcs(target, nx=101, ny=101, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    settings = ChartSettings(psf_magnitude=18.0, psf_model="empirical hybrid")
+    kernel = moffat_kernel(4.0, size=41)
+    captured = {}
+
+    monkeypatch.setattr(
+        "findingchart_guiplotter.renderer.empirical_psf_from_field",
+        lambda *args, **kwargs: (kernel, [(20.0, 20.0), (80.0, 80.0)], np.asarray([1500.0, 1400.0])),
+    )
+    monkeypatch.setattr(
+        "findingchart_guiplotter.renderer.estimate_target_flux_from_field",
+        lambda *args, **kwargs: 321.0,
+    )
+
+    def fake_inject_psf(data, psf, x, y, flux):
+        captured["flux"] = flux
+        return np.array(data, copy=True)
+
+    monkeypatch.setattr("findingchart_guiplotter.renderer.inject_psf", fake_inject_psf)
+
+    image_with_injected_psf(image, target, settings)
+
+    assert captured["flux"] == pytest.approx(321.0)
+
+
+def test_rgb_image_injection_uses_selected_empirical_psf_model(monkeypatch):
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.random.default_rng(0).normal(0.5, 0.05, size=(101, 101, 3)),
+        wcs=centered_tan_wcs(target, nx=101, ny=101, pixscale_arcsec=0.5),
+        survey="test",
+        band="grz",
+        mode="Color composite",
+    )
+    settings = ChartSettings(psf_magnitude=18.0, psf_model="gaussian taper")
+    kernel = moffat_kernel(4.0, size=41)
+    captured = {}
+
+    def fake_empirical_psf_from_field(data, x, y, *, fwhm_pix, psf_model, **kwargs):
+        captured["shape"] = data.shape
+        captured["psf_model"] = psf_model
+        return kernel, [(20.0, 20.0), (80.0, 80.0)], np.asarray([1500.0, 1400.0])
+
+    monkeypatch.setattr("findingchart_guiplotter.renderer.empirical_psf_from_field", fake_empirical_psf_from_field)
+    monkeypatch.setattr("findingchart_guiplotter.renderer.estimate_target_flux_from_field", lambda *args, **kwargs: 321.0)
+    monkeypatch.setattr("findingchart_guiplotter.renderer.inject_psf", lambda data, psf, x, y, flux: np.array(data, copy=True))
+
+    image_with_injected_psf(image, target, settings)
+
+    assert captured == {"shape": (101, 101), "psf_model": "gaussian taper"}
+
+
+def test_analytic_fallback_kernel_changes_with_selected_model():
+    moffat = analytic_fallback_kernel(4.0, 41, "moffat")
+    gaussian = analytic_fallback_kernel(4.0, 41, "gaussian taper")
+
+    assert moffat.shape == gaussian.shape
+    assert not np.allclose(moffat, gaussian)
+
+
+def test_image_injection_keeps_total_flux_fixed_as_fwhm_changes_in_empirical_mode():
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    rng = np.random.default_rng(0)
+    image = ImageData(
+        data=rng.normal(100.0, 2.0, (181, 181)),
+        wcs=centered_tan_wcs(target, nx=181, ny=181, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+    field_kernel = moffat_kernel(4.2, size=81)
+    for x, y, flux in [
+        (40.0, 42.0, 1800.0),
+        (92.0, 55.0, 1600.0),
+        (138.0, 68.0, 1700.0),
+        (58.0, 126.0, 1500.0),
+        (126.0, 134.0, 1750.0),
+    ]:
+        image.data = inject_psf(image.data, field_kernel, x=x, y=y, flux=flux)
+
+    narrow = image_with_injected_psf(
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, psf_model="empirical hybrid", psf_fwhm_arcsec=1.0),
+    )
+    broad = image_with_injected_psf(
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, psf_model="empirical hybrid", psf_fwhm_arcsec=3.0),
+    )
+    narrow_delta = narrow - image.data
+    broad_delta = broad - image.data
+
+    assert np.sum(broad_delta) == pytest.approx(np.sum(narrow_delta), rel=0.08)
+    assert np.max(broad_delta) < np.max(narrow_delta)
+
+
+def test_image_injection_keeps_total_flux_fixed_as_fwhm_changes_in_fallback_mode(monkeypatch):
+    target = Target(display_name="T", ra_deg=210.0, dec_deg=54.0)
+    image = ImageData(
+        data=np.random.default_rng(1).normal(100.0, 2.0, (101, 101)),
+        wcs=centered_tan_wcs(target, nx=101, ny=101, pixscale_arcsec=0.5),
+        survey="test",
+        band="r",
+        mode="Single band",
+    )
+
+    def fail_empirical(*args, **kwargs):
+        raise EmpiricalPSFError("forced fallback")
+
+    monkeypatch.setattr("findingchart_guiplotter.renderer.empirical_psf_from_field", fail_empirical)
+
+    narrow = image_with_injected_psf(
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, psf_model="moffat", psf_fwhm_arcsec=1.0),
+    )
+    broad = image_with_injected_psf(
+        image,
+        target,
+        ChartSettings(psf_magnitude=18.0, psf_model="moffat", psf_fwhm_arcsec=3.0),
+    )
+    narrow_delta = narrow - image.data
+    broad_delta = broad - image.data
+
+    assert np.sum(broad_delta) == pytest.approx(np.sum(narrow_delta), rel=0.08)
+    assert np.max(broad_delta) < np.max(narrow_delta)

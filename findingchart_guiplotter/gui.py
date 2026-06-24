@@ -210,8 +210,12 @@ class MainWindow(QMainWindow):
     def _build_sidebar(self) -> QWidget:
         tabs = QTabWidget()
         tabs.setMaximumWidth(320)
-        tabs.addTab(self._build_target_archive_tab(), "Target / Archive")
-        tabs.addTab(self._build_chart_catalog_tab(), "Slit / Catalog")
+        target_page = self._build_target_archive_tab()
+        psf_page = self._build_psf_tab()
+        slit_page = self._build_chart_catalog_tab()
+        tabs.addTab(target_page, "Target / Archive")
+        tabs.addTab(slit_page, "Slit / Catalog")
+        tabs.addTab(psf_page, "PSF / Injection")
         return tabs
 
     def _build_target_archive_tab(self) -> QWidget:
@@ -349,8 +353,6 @@ class MainWindow(QMainWindow):
         self.magnitude_spin.setValue(18.0)
         self.magnitude_spin.setDecimals(1)
         self.magnitude_spin.setSuffix(" mag")
-        self.psf_model_combo = QComboBox()
-        self.psf_model_combo.addItems(["moffat", "empirical core", "empirical hybrid", "gaussian taper"])
         self.inset_zoom_slider = QSlider(Qt.Horizontal)
         self.inset_zoom_slider.setTickPosition(slider_no_ticks())
         self.inset_zoom_slider.setRange(3, 12)
@@ -361,16 +363,46 @@ class MainWindow(QMainWindow):
         inset_zoom_layout.setContentsMargins(0, 0, 0, 0)
         inset_zoom_layout.addWidget(self.inset_zoom_slider, 1)
         inset_zoom_layout.addWidget(self.inset_zoom_value_label, 0)
+        source_form.addRow(self.inject_check)
+        source_form.addRow("Brightness / mag", self.magnitude_spin)
+        source_form.addRow("Inset Zoom-in", inset_zoom_row)
+        return source_box
+
+    def _build_psf_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+
+        model_box = QGroupBox("PSF Profile")
+        model_form = QFormLayout(model_box)
+        self.psf_model_combo = QComboBox()
+        self.psf_model_combo.addItems(["moffat", "empirical core", "empirical hybrid", "gaussian taper"])
         self.fwhm_spin = QDoubleSpinBox()
         self.fwhm_spin.setRange(0.1, 10.0)
         self.fwhm_spin.setValue(1.0)
         self.fwhm_spin.setSuffix(" arcsec")
-        source_form.addRow(self.inject_check)
-        source_form.addRow("Brightness / mag", self.magnitude_spin)
-        source_form.addRow("PSF model", self.psf_model_combo)
-        source_form.addRow("Inset Zoom-in", inset_zoom_row)
-        source_form.addRow("FWHM", self.fwhm_spin)
-        return source_box
+        self.fwhm_spin.setDecimals(2)
+        model_form.addRow("PSF model", self.psf_model_combo)
+        model_form.addRow("FWHM", self.fwhm_spin)
+        layout.addWidget(model_box)
+
+        notes_box = QGroupBox("Field Sampling")
+        notes_layout = QVBoxLayout(notes_box)
+        notes = QTextEdit()
+        notes.setReadOnly(True)
+        notes.setMaximumHeight(150)
+        notes.setPlainText(
+            "Empirical modes sample the current archival image and exclude the target position.\n"
+            "\n"
+            "Current behavior:\n"
+            "- Sparse fields can build an empirical PSF from as few as 2 usable stars.\n"
+            "- Empirical hybrid and gaussian taper keep the measured core and change the wings.\n"
+            "- If field sampling fails, the renderer falls back to an analytic profile."
+        )
+        notes_layout.addWidget(notes)
+        layout.addWidget(notes_box)
+
+        layout.addStretch(1)
+        return page
 
     def _build_image_tab(self) -> QWidget:
         page = QWidget()

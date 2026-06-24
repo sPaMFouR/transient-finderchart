@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from findingchart_guiplotter.empirical_psf import (
+    empirical_psf_from_field,
     circularize_psf,
     estimate_field_fwhm,
     hybridize_injected_psf,
@@ -144,3 +145,40 @@ def test_estimate_field_fwhm_recovers_synthetic_field_width():
 
     assert star_count >= 3
     assert measured == pytest.approx(4.2, rel=0.20)
+
+
+def test_estimate_field_fwhm_supports_two_star_fields():
+    data = np.zeros((181, 181), dtype=float)
+    kernel = moffat_kernel(4.2, size=81)
+    for x, y, flux in [
+        (40.0, 42.0, 1800.0),
+        (138.0, 134.0, 1750.0),
+    ]:
+        data = inject_psf(data, kernel, x=x, y=y, flux=flux)
+
+    measured, star_count = estimate_field_fwhm(data, fwhm_guess_pix=3.5)
+
+    assert star_count == 2
+    assert measured == pytest.approx(4.2, rel=0.25)
+
+
+def test_empirical_psf_from_field_supports_two_star_fields():
+    data = np.zeros((181, 181), dtype=float)
+    kernel = moffat_kernel(4.2, size=81)
+    for x, y, flux in [
+        (40.0, 42.0, 1800.0),
+        (138.0, 134.0, 1750.0),
+    ]:
+        data = inject_psf(data, kernel, x=x, y=y, flux=flux)
+
+    measured_psf, used_coords, fluxes = empirical_psf_from_field(
+        data,
+        x=90.0,
+        y=90.0,
+        fwhm_pix=4.2,
+        psf_model="empirical hybrid",
+    )
+
+    assert len(used_coords) == 2
+    assert len(fluxes) == 2
+    assert measured_psf.sum() == pytest.approx(1.0)
