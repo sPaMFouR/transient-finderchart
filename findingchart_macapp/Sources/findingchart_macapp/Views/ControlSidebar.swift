@@ -9,7 +9,6 @@ struct ControlSidebar: View {
                 targetSection
                 archiveImageSection
                 injectedSourceSection
-                psfInjectionSection
                 contrastSection
                 slitSection
                 catalogSection
@@ -67,20 +66,8 @@ struct ControlSidebar: View {
             LabeledToggle(title: "Injected SN", value: $vm.params.showInjectedSource)
             Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 NumericField(title: "Brightness", unit: "mag", value: $vm.params.psfMagnitude, digits: 1)
-                NumericSlider(title: "Inset zoom", unit: "x", value: $vm.params.insetZoomFactor, range: 3.0...12.0, step: 1.0, digits: 0)
-            }
-        }
-        .glassCard()
-        .onChange(of: vm.params.psfMagnitude) { _, _ in vm.scheduleLiveRender() }
-        .onChange(of: vm.params.insetZoomFactor) { _, _ in vm.scheduleLiveRender() }
-        .onChange(of: vm.params.showInjectedSource) { _, _ in vm.scheduleLiveRender() }
-    }
-
-    private var psfInjectionSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(systemName: "dot.radiowaves.left.and.right", title: "PSF / Injection")
-            Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 8) {
                 NumericField(title: "FWHM", unit: "\"", value: $vm.params.psfFwhmArcsec, digits: 2)
+                NumericSlider(title: "Inset zoom", unit: "x", value: $vm.params.insetZoomFactor, range: 3.0...12.0, step: 1.0, digits: 0)
             }
             Picker("PSF model", selection: $vm.params.psfModel) {
                 Text("moffat").tag("moffat")
@@ -94,8 +81,11 @@ struct ControlSidebar: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .glassCard()
+        .onChange(of: vm.params.psfMagnitude) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.psfModel) { _, _ in vm.scheduleLiveRender() }
         .onChange(of: vm.params.psfFwhmArcsec) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.insetZoomFactor) { _, _ in vm.scheduleLiveRender() }
+        .onChange(of: vm.params.showInjectedSource) { _, _ in vm.scheduleLiveRender() }
     }
 
     private var contrastSection: some View {
