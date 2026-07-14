@@ -255,10 +255,91 @@
     - Injection flux now prefers a catalog-derived zero point from queried field stars when Gaia or Pan-STARRS sources are available in the chart.
     - If no catalog stars are loaded, the renderer falls back to empirical field-star fluxes and then image statistics for a reasonable visual injection.
 
-## Known next steps
+## 2026-07-13
 
-1. Add archive coverage checks that enable/highlight survey tabs before image loading.
-2. Add Legacy Tractor catalog overlays if deeper reference catalogs are needed.
-3. Add instrument presets if specific telescope/instrument chart defaults are needed.
-4. Add a sample gallery once preferred finding-chart visual style is chosen.
-5. Add automated tests around WCS slit geometry and parallactic-angle calculations.
+42. Added and refined the native macOS SwiftUI interface.
+    - Kept the Python package as the science/rendering implementation and added a JSON subprocess bridge for metadata, target resolution, image loading, catalog queries, rendering, and export.
+    - Added a debounced live-render workflow backed by cached image/catalog state.
+    - Added interactive catalog selection with marker hit targets, distance-sorted rows, blind-offset details, and selection highlighting.
+    - Added native controls for contrast, color map/inversion, annotation color, slit/parallactic PA, overlays, inset zoom, PSF model, FWHM, and fake-source magnitude.
+    - Added high-DPI PDF and JPEG export actions.
+
+43. Improved automatic fake-source defaults.
+    - Added field-star FWHM measurement and used it to initialize the requested injected PSF width when the user has not overridden the previous automatic value.
+    - Added a recommended display magnitude corresponding to the configured reference peak S/N and preserved explicit user edits across later image loads.
+    - Defaulted the injected PSF model to Moffat across Python, web, bridge, and Swift models.
+
+44. Expanded PSF model and flux behavior.
+    - Added explicit `moffat`, `empirical core`, `empirical hybrid`, and `gaussian taper` choices.
+    - Kept total injected flux stable when the requested FWHM changes in both empirical and analytic-fallback paths.
+    - Added field-FWHM calibration separate from the requested injected-source FWHM.
+    - Added regression coverage for model selection, empirical and RGB injection, analytic fallback, flux scaling, FWHM measurement, and sparse two-star fields.
+
+45. Refined chart layout and appearance controls.
+    - Made the inset frame size stable while the zoom control changes its sampled sky area.
+    - Scaled inset source boxes, crosshairs, compass, and rulers with the displayed field while retaining readable minimum sizes.
+    - Restored inset connector lines and ensured their z-order remains above both images.
+    - Added supported Matplotlib/pypalettes color maps, inversion, and selectable annotation colors to Qt, web, bridge, and Swift interfaces.
+
+46. Added catalog target-distance filtering.
+    - Added a shared 10 arcsec default maximum target distance in the Python catalog layer and exposed the control in Qt and web interfaces.
+    - Applied equivalent filtering and distance sorting in the macOS bridge.
+    - Added regression tests for cutoff inclusion/exclusion and web payload propagation.
+
+47. Hardened the Legacy Survey fallback.
+    - Detects flat placeholder JPEG tiles and reports missing/unusable coverage rather than rendering them as real data.
+    - Converts single-band JPEG fallback data to grayscale while retaining RGB for color mode.
+    - Retains an approximate centered TAN WCS only for the fallback path and records the JPEG source URL.
+
+48. Performed a full local and online implementation audit.
+    - Reviewed all tracked Python, test, Swift, bridge, packaging, and documentation files.
+    - Compared local `main` with the GitHub remote; both resolved to commit `5aa5e14696786c619f03acb91f2b46964d74d3e5`.
+    - Cross-checked the archive/catalog adapters against current official Pan-STARRS image/catalog, Legacy Survey viewer, NASA SkyView, and ESA Gaia documentation.
+    - Ran the offline Python suite successfully: `62 passed` on Python 3.9.6. Bytecode compilation of the Python package, bridge, launch script, and tests also passed when the cache was redirected to a writable temporary directory.
+    - Confirmed that the advertised editable environment does not include `pytest`; tests succeeded through the user Python environment. This motivated a documented development-dependency/CI follow-up.
+    - Attempted the Swift package test under the managed sandbox. SwiftPM could not initialize its nested sandbox/compiler cache (`sandbox_apply: Operation not permitted`), so this was recorded as an environment-limited check rather than a source-code failure. The package still has no Swift test target.
+    - Updated the root and native READMEs with the actual interfaces, prerequisites, runtime state, data-service constraints, verification status, security boundary, scientific caveats, and prioritized roadmap.
+
+## Audit findings and prioritized next steps
+
+### High priority
+
+1. Make fake-source calibration band-aware and auditable.
+   - `estimate_catalog_flux_scale` currently combines measured image aperture fluxes with whichever Gaia G or Pan-STARRS magnitude is available, even when the archive/filter differs.
+   - This is appropriate only as a visual heuristic. Add band matching/color terms or a user-supplied zero point for quantitative use, and record the selected calibration/fallback path in the chart metadata.
+
+2. Propagate Gaia positions to the observation epoch.
+   - Gaia parallax/proper-motion values are displayed but marker coordinates and blind offsets remain at the catalog coordinates.
+   - Apply space motion when the required astrometry is available, show the input/output epochs, and warn when propagation is incomplete.
+
+3. Add reproducible development and CI configuration.
+   - Declare a development extra with `pytest` plus chosen lint/type tools.
+   - Add CI across supported Python versions and at least one macOS Swift build; exercise PySide6 and the PyQt6 compatibility route.
+   - Add a constraints/lock strategy and replace the static test badge with CI status.
+
+4. Add scientific geometry regression tests.
+   - Cover slit PA for rotated and parity-flipped WCS, reference parallactic-angle cases, compass/scale orientation, edge targets, and raster/vector export parity.
+   - The current 62 tests heavily exercise PSF and inset behavior but do not cover `tns.py`, `observatories.py`, the Swift bridge, or live service contracts.
+
+5. Harden remote adapters.
+   - Add retries with bounded exponential backoff and service-specific structured errors.
+   - Validate coverage, native pixel scale, and service cutout limits before submitting requests.
+   - Expand Gaia fallback beyond connection exceptions so non-2xx TAP responses can use VizieR when appropriate.
+   - Reduce reliance on generated HTML/public-search parsing for SkyView and unauthenticated TNS paths.
+
+### Medium priority
+
+6. Add preflight survey coverage checks, especially the principal Pan-STARRS stacked-survey declination boundary near -30 degrees, and guide users to suitable alternatives.
+7. Split the 1118-line renderer, 930-line Qt GUI, and 500-line Swift bridge into smaller calibration, overlay, archive, serialization, and presentation modules; remove duplicated catalog-detail formatting.
+8. Make native bridge startup portable: `BridgeConfig.default` currently falls back to a developer-specific absolute repository path. Derive it from the installed executable/package location and validate repository/Python paths at startup.
+9. Replace the macOS bridge's unrestricted pickle/cache-path loading with a validated versioned state format constrained to the application state directory.
+10. Add cleanup/retention and cache reuse for `web_exports/` and `findingchart_macapp/rendered_charts/`; both currently accumulate local output.
+11. Add recorded-response contract tests and opt-in live smoke tests for TNS, Gaia/VizieR, MAST, STScI cutouts, Legacy Survey, and SkyView. Add Swift decoding/state tests.
+12. Add de-duplication and quality filtering when Gaia and Pan-STARRS catalogs are combined; the current combined result is concatenated and may show the same physical star twice.
+
+### Lower priority
+
+13. Add Legacy Tractor or other deeper reference catalogs.
+14. Add instrument/detector presets, configurable observatories, detector footprints/orientation, and atmospheric-dispersion guidance.
+15. Add a sample gallery, release notes, service acknowledgement/citation metadata, and one synchronized version source for Python package, web server, bridge, and Swift bundle.
+16. Remove or implement dormant interfaces such as `CACHE_DIR`, `ImageData.local_path`, and `rgb_visual_flux`, and document whether the duplicated `requirements.txt` remains intentional.
