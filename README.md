@@ -6,9 +6,7 @@
 [![Tests](https://img.shields.io/badge/tests-62%20passed-brightgreen.svg)](tests)
 [![License: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-Finding-chart tool for supernovae and other transients, available as a Qt desktop GUI, local development web interface, and experimental native macOS app.
-
-Resolve TNS or manual targets, fetch archival cutouts, add a visual fake source and observing overlays, then export PNG, JPEG, or PDF charts.
+Finding-chart tool for supernovae and other transients, available as a Qt desktop GUI and a native macOS app. Resolve TNS or add manual targets, fetch archival survey cutouts, add a visual fake source and observing overlays (slit and blind offset star), then export the finding chart as PNG, JPEG, or PDF charts.
 
 The chart design is inspired by Sean Brennan's [`Astro-Sean/finder_chart`](https://github.com/Astro-Sean/finder_chart).
 
