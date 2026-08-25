@@ -91,8 +91,9 @@ def _target_with_current_label(target, payload: dict[str, Any]):
 
 def _source_payload(source, target=None) -> dict[str, Any]:
     import astropy.units as u
-    import numpy as np
     from astropy.coordinates import SkyCoord
+
+    from findingchart_guiplotter.blind_offsets import blind_offset_from_target_to_source
 
     coord = SkyCoord(source.ra_deg * u.deg, source.dec_deg * u.deg)
     ra = coord.ra.to_string(unit=u.hour, sep=":", precision=3, pad=True)
@@ -114,12 +115,11 @@ def _source_payload(source, target=None) -> dict[str, Any]:
     delta_dec_arcsec = None
     pa_e_of_n = None
     if target is not None:
-        target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
-        delta_ra, delta_dec = target_coord.spherical_offsets_to(coord)
-        delta_ra_arcsec = float(delta_ra.to_value(u.arcsec))
-        delta_dec_arcsec = float(delta_dec.to_value(u.arcsec))
-        pa_e_of_n = float((u.Quantity(np.degrees(np.arctan2(delta_ra_arcsec, delta_dec_arcsec)), u.deg).to_value(u.deg) + 360.0) % 360.0)
-        separation_arcsec = float(coord.separation(target_coord).arcsec)
+        offset = blind_offset_from_target_to_source(source, target)
+        delta_ra_arcsec = offset.delta_ra_arcsec
+        delta_dec_arcsec = offset.delta_dec_arcsec
+        pa_e_of_n = offset.pa_east_of_north_deg
+        separation_arcsec = offset.separation_arcsec
         lines.append(f"Delta_RA : {delta_ra_arcsec:.2f}\"")
         lines.append(f"Delta_Dec: {delta_dec_arcsec:+.2f}\"")
         lines.append(f"Offset from target: {separation_arcsec:.2f}\"")

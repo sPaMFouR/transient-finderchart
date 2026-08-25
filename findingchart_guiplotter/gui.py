@@ -41,6 +41,7 @@ from .qt_compat import (
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+from .blind_offsets import blind_offset_from_target_to_source
 from .catalog import CatalogSource, DEFAULT_CATALOG_MAX_DISTANCE_ARCSEC, query_catalog_sources
 from .exporting import default_export_filename, ensure_export_suffix
 from .image_fetchers import (
@@ -912,15 +913,11 @@ def source_detail_text(source: CatalogSource, target: Target | None = None) -> s
     lines.append(f"PM RA: {format_optional(source.pmra_mas_per_year, ' mas/yr', missing='Unavailable')}")
     lines.append(f"PM Dec: {format_optional(source.pmdec_mas_per_year, ' mas/yr', missing='Unavailable')}")
     if target is not None:
-        target_coord = SkyCoord(target.ra_deg * u.deg, target.dec_deg * u.deg)
-        delta_ra, delta_dec = target_coord.spherical_offsets_to(coord)
-        delta_ra_arcsec = delta_ra.to_value(u.arcsec)
-        delta_dec_arcsec = delta_dec.to_value(u.arcsec)
-        pa_e_of_n = (u.Quantity(np.degrees(np.arctan2(delta_ra_arcsec, delta_dec_arcsec)), u.deg).to_value(u.deg) + 360.0) % 360.0
-        lines.append(f"Delta_RA : {delta_ra_arcsec:.2f}\"")
-        lines.append(f"Delta_Dec: {delta_dec_arcsec:+.2f}\"")
-        lines.append(f"Offset from target: {coord.separation(target_coord).arcsec:.2f}\"")
-        lines.append(f"PA E of N: {pa_e_of_n:.2f} deg")
+        offset = blind_offset_from_target_to_source(source, target)
+        lines.append(f"Delta_RA : {offset.delta_ra_arcsec:.2f}\"")
+        lines.append(f"Delta_Dec: {offset.delta_dec_arcsec:+.2f}\"")
+        lines.append(f"Offset from target: {offset.separation_arcsec:.2f}\"")
+        lines.append(f"PA E of N: {offset.pa_east_of_north_deg:.2f} deg")
     return "\n".join(lines)
 
 
